@@ -513,6 +513,47 @@
     border-radius:6px; padding:1px 6px; transform:rotate(-8deg);
   }
 
+  /* ============ Missionen / Erfolge / Toast ============ */
+  .mrow{
+    background:rgba(20,36,47,.6); border:1px solid #23404f; border-radius:10px;
+    padding:8px 10px; margin:6px 0; font-size:12.5px; color:var(--foam);
+  }
+  .mrow.done{ border-color:var(--jade); }
+  .mbar{ height:7px; border-radius:5px; background:#1b3140; margin-top:5px; overflow:hidden; border:1px solid #2c4657; }
+  .mbar i{ display:block; height:100%; background:linear-gradient(90deg, var(--brass), #e8c06a); transition:width .3s; }
+  .mrow.done .mbar i{ background:linear-gradient(90deg, #63d488, #2f9d5c); }
+  .mrew{ float:right; color:#e8c06a; font-weight:700; }
+  .achrow{
+    display:flex; gap:9px; align-items:center;
+    background:rgba(20,36,47,.6); border:1px solid #23404f; border-radius:10px;
+    padding:7px 10px; margin:5px 0; font-size:12.5px; color:var(--foam);
+  }
+  .achrow.locked{ opacity:.42; filter:grayscale(.6); }
+  .achrow .aicon{ font-size:20px; flex:none; }
+  .statgrid{ display:grid; grid-template-columns:1fr 1fr; gap:7px; margin:6px 0; }
+  .statbox{
+    background:rgba(20,36,47,.6); border:1px solid #23404f; border-radius:10px;
+    padding:8px 10px; text-align:center;
+  }
+  .statbox b{ display:block; font-size:19px; color:var(--parch-1); font-variant-numeric:tabular-nums; }
+  .statbox span{ font-size:10.5px; color:var(--foam-dim); letter-spacing:.05em; }
+  #toast{
+    position:fixed; top:calc(env(safe-area-inset-top) + 52px); left:50%; transform:translateX(-50%) translateY(-8px);
+    background:linear-gradient(160deg, #17303d, #122631); border:1px solid var(--brass);
+    color:#ffe9b0; border-radius:99px; padding:8px 18px; font-size:13px; font-weight:700;
+    z-index:80; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+    max-width:88vw; text-align:center;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  /* Tausch */
+  .tradecols{ display:flex; gap:10px; text-align:center; }
+  .tradecols > div{ flex:1; }
+  .tradecols .card{ width:92px; height:129px; margin:0 auto; }
+  .tradeslot{
+    min-height:135px; display:grid; place-items:center; border:2px dashed #7a6234;
+    border-radius:10px; color:#7a6234; font-size:12px; padding:4px;
+  }
+
   /* ============ Kampf-Arena ============ */
   #battle .scr-body{ display:flex; flex-direction:column; gap:6px; overflow:hidden; padding:4px 10px 10px; }
   .bside{ display:flex; flex-direction:column; align-items:center; gap:4px; }
@@ -605,10 +646,23 @@
     <h1 class="display">📚 SAMMLUNG</h1>
     <span class="pilechip" id="colMeter">0/100</span>
     <span class="pilechip">💰 <b id="colBerry">0</b></span>
+    <button class="hbtn" id="colTrade" title="Duplikate tauschen">🔄</button>
     <button class="hbtn" id="colBack">↩</button>
   </header>
   <div class="scr-body"><div id="colGrid"></div></div>
 </div>
+
+<!-- Profil / Missionen / Erfolge -->
+<div class="screen" id="profileScr">
+  <header>
+    <h1 class="display">👤 PROFIL</h1>
+    <span class="pilechip">💰 <b id="prBerry">0</b></span>
+    <button class="hbtn" id="prBack">↩</button>
+  </header>
+  <div class="scr-body" id="prBody"></div>
+</div>
+
+<div id="toast"></div>
 
 <!-- Kampf-Arena -->
 <div class="screen" id="battle">
@@ -1577,9 +1631,10 @@ function checkGameOver(){
   if(mode === "hotseat") awardBerry(20, "Durak-Runde");
   else {
     const won = result !== "draw" && result !== myId();
-    if(won) profile.stats.durakWins++;
+    if(won){ profile.stats.durakWins++; missionEvent("durakWin"); }
     awardBerry(won ? 40 : 15, won ? "Durak-Sieg" : "Durak-Runde");
   }
+  missionEvent("durakPlay");
   addLog(icon, title);
   render();
   showEndOverlay(icon, title, text);
@@ -1609,6 +1664,10 @@ function performPlay(card, intent, targetId){
     playAttackCard(w, card);
     sfx("play");
     raisedId = null;
+    if(mode !== "online" || w === mySeat){
+      if(w !== attacker) missionEvent("coatk");
+      if(card.str >= 94) missionEvent("legend");
+    }
     if(table.length === 1){
       ruling(`${Nm(w)} ${isYou(w) ? "greifst" : "greift"} an: <b>${card.name}</b> (${card.str}).`);
     } else {
@@ -1660,6 +1719,10 @@ function performPlay(card, intent, targetId){
     playDefenseCard(defId, card, pair);
     sfx("slam");
     raisedId = null; choiceId = null;
+    if(mode !== "online" || defId === mySeat){
+      missionEvent("def");
+      if(card.str >= 94) missionEvent("legend");
+    }
     ruling("✅ " + r.text, "good");
     afterDefense();
     return true;
@@ -1689,6 +1752,7 @@ function tryShove(card){
   buildThrowOrder();                        // Wurf-Reihenfolge um den neuen Angreifer neu aufbauen
   maxAttacks = Math.max(table.length, Math.min(MAX_ATTACKS_LIMIT, hands[nd].length));
   sfx("shove"); buzz(30);
+  if(mode !== "online" || shover === mySeat) missionEvent("shove");
   ruling(`🔁 ${CREWS[card.crew].name}! ${Nm(shover)} legt <b>${card.name}</b> (${card.str}) zur Crew dazu und schiebt den ganzen Angriff weiter an <b>${Nm(nd)}</b>!`);
   phase = "defend";
   if(isAI(nd)){ render(); later(aiDefendStep, AI_DELAY); }
@@ -2309,6 +2373,12 @@ function remoteTryPlay(card, intent, targetId){
   send({ t:"a", a:"play", card: card.id, intent, target: targetId || null });
   raisedId = null; choiceId = null;
   sfx("play");
+  // Missions-Zählung für den Gast (der Host zählt nur seine eigenen Züge)
+  if(phase === "attack" || phase === "pile"){
+    if(whoThrows() !== attacker) missionEvent("coatk");
+    if(card.str >= 94) missionEvent("legend");
+  } else if(intent === "shove") missionEvent("shove");
+  else { missionEvent("def"); if(card.str >= 94) missionEvent("legend"); }
   return true;
 }
 
@@ -2359,7 +2429,8 @@ function applySnapshot(s){
     // Gast: Berry-Belohnung (das Spielende kommt per Snapshot, checkGameOver läuft nur beim Host)
     profile.stats.durakGames++;
     const gWon = s.over.result !== "draw" && s.over.result !== mySeat;
-    if(gWon) profile.stats.durakWins++;
+    if(gWon){ profile.stats.durakWins++; missionEvent("durakWin"); }
+    missionEvent("durakPlay");
     awardBerry(gWon ? 40 : 15, gWon ? "Durak-Sieg" : "Durak-Runde");
     showOverlayBox(s.over.icon, s.over.title,
       s.over.text + "<br><br><i>Der Raum-Ersteller kann eine Revanche starten — bleib einfach hier.</i>",
@@ -2540,6 +2611,7 @@ function loadProfile(){
     profile.berry += 100;
     profile.dailyHit = true;
   }
+  ensureDailyMissions();
   saveProfile();
 }
 function saveProfile(){ try{ localStorage.setItem("opdurak-profile", JSON.stringify(profile)); }catch(e){} }
@@ -2554,6 +2626,100 @@ function awardBerry(n, why){
   profile.berry += n;
   saveProfile();
   addLog("💰", `+${n} Berry (${why})`);
+}
+
+/* ---- Toast-Meldungen (überall sichtbar) ---- */
+let toastTimer = null;
+function showToast(html){
+  if(typeof document === "undefined") return;
+  const el = $("#toast");
+  if(!el || !el.classList) return;
+  el.innerHTML = html;
+  el.classList.add("show");
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 3200);
+}
+
+/* ---- Tagesmissionen ---- */
+const MISSION_DEFS = [
+  { id:"dwin",  txt:"Gewinne {n} Durak-Partie(n)",        ev:"durakWin", targets:[1, 2], rew:80 },
+  { id:"dplay", txt:"Spiele {n} Durak-Partien",           ev:"durakPlay",targets:[2, 3], rew:60 },
+  { id:"awin",  txt:"Gewinne {n} Arena-Kämpfe",           ev:"arenaWin", targets:[1, 2], rew:80 },
+  { id:"packs", txt:"Öffne {n} Karten-Pack(s)",           ev:"pack",     targets:[1, 3], rew:60 },
+  { id:"shove", txt:"Schiebe {n}× einen Angriff weiter",  ev:"shove",    targets:[1, 2], rew:70 },
+  { id:"coatk", txt:"Wirf {n}× als Mitangreifer rein",    ev:"coatk",    targets:[2, 4], rew:70 },
+  { id:"defok", txt:"Verteidige {n} Angriffe erfolgreich",ev:"def",      targets:[5, 8], rew:60 },
+  { id:"legend",txt:"Spiele eine Legende (Stärke 94+)",   ev:"legend",   targets:[1],    rew:90 },
+];
+function ensureDailyMissions(){
+  const today = new Date().toISOString().slice(0, 10);
+  if(profile.daily && profile.daily.date === today) return;
+  let h = 0;
+  for(const ch of today) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const defs = MISSION_DEFS.slice();
+  const ms = [];
+  for(let i = 0; i < 3; i++){
+    h = (h * 1103515245 + 12345) >>> 0;
+    const d = defs.splice(h % defs.length, 1)[0];
+    h = (h * 1103515245 + 12345) >>> 0;
+    const t = d.targets[h % d.targets.length];
+    ms.push({ id: d.id, ev: d.ev, txt: d.txt.replace("{n}", t), target: t, n: 0, done: false });
+  }
+  profile.daily = { date: today, ms };
+  saveProfile();
+}
+function missionEvent(ev, amt){
+  amt = amt || 1;
+  ensureDailyMissions();
+  // Statistik-Zähler
+  const sc = profile.stats;
+  if(ev === "shove") sc.shoves = (sc.shoves || 0) + amt;
+  else if(ev === "coatk") sc.coatks = (sc.coatks || 0) + amt;
+  else if(ev === "def") sc.defs = (sc.defs || 0) + amt;
+  else if(ev === "legend") sc.legends = (sc.legends || 0) + amt;
+  for(const m of profile.daily.ms){
+    if(m.ev !== ev || m.done) continue;
+    m.n = Math.min(m.target, m.n + amt);
+    if(m.n >= m.target){
+      m.done = true;
+      const def = MISSION_DEFS.find(d => d.id === m.id);
+      profile.berry += def.rew;
+      addLog("🎯", `Mission geschafft: ${m.txt} (+${def.rew} Berry)`);
+      showToast(`🎯 Mission geschafft: <b>${m.txt}</b> · +${def.rew} 💰`);
+      sfx("win"); buzz([30, 40, 30]);
+    }
+  }
+  checkAchievements();
+  saveProfile();
+}
+
+/* ---- Erfolge (dauerhaft) ---- */
+const ACH_DEFS = [
+  { id:"firstwin", icon:"🥇", txt:"Erster Durak-Sieg",            rew:100,  chk:s => s.durakWins >= 1 },
+  { id:"vet10",    icon:"🎖️", txt:"Durak-Veteran — 10 Siege",     rew:250,  chk:s => s.durakWins >= 10 },
+  { id:"arena1",   icon:"⚔️", txt:"Erster Arena-Sieg",            rew:100,  chk:s => s.arenaWins >= 1 },
+  { id:"arena10",  icon:"🏟️", txt:"Arena-Champion — 10 Siege",    rew:250,  chk:s => s.arenaWins >= 10 },
+  { id:"col25",    icon:"📗", txt:"Sammler — 25 Karten",          rew:100,  chk:() => ownedCount() >= 25 },
+  { id:"col50",    icon:"📘", txt:"Groß-Sammler — 50 Karten",     rew:250,  chk:() => ownedCount() >= 50 },
+  { id:"col100",   icon:"👑", txt:"Komplette Sammlung!",          rew:1000, chk:() => ownedCount() >= CARDS.length },
+  { id:"legend1",  icon:"✨", txt:"Erste Legendäre gezogen",      rew:150,  chk:() => CARDS.some(c => profile.cards[c.id] && rarityOf(c) === "l") },
+  { id:"packs10",  icon:"🎁", txt:"Pack-Fan — 10 Packs",          rew:150,  chk:s => s.packs >= 10 },
+  { id:"shove10",  icon:"🔁", txt:"Schiebermeister — 10× geschoben", rew:150, chk:s => (s.shoves || 0) >= 10 },
+];
+function checkAchievements(){
+  profile.ach = profile.ach || {};
+  for(const a of ACH_DEFS){
+    if(profile.ach[a.id]) continue;
+    let ok = false;
+    try{ ok = a.chk(profile.stats); }catch(e){}
+    if(ok){
+      profile.ach[a.id] = 1;
+      profile.berry += a.rew;
+      addLog("🏅", `Erfolg: ${a.txt} (+${a.rew} Berry)`);
+      showToast(`🏅 Erfolg freigeschaltet: <b>${a.txt}</b> · +${a.rew} 💰`);
+      sfx("win");
+    }
+  }
 }
 
 /* ---- Geschenk-Codes ---- */
@@ -2628,6 +2794,7 @@ function openPack(){
   packBusy = true;
   profile.berry -= PACK_COST;
   profile.stats.packs++;
+  missionEvent("pack");
   const cards = rollPack();
   const row = document.querySelector("#packRow");
   row.innerHTML = "";
@@ -2649,6 +2816,48 @@ function openPack(){
       if(i === cards.length - 1){ packBusy = false; updatePackBtn(); }
     }, 420 * i + 250);
   });
+}
+
+/* ---- Profil-Screen: Missionen, Statistiken, Erfolge ---- */
+function showProfile(){
+  $("#overlay").classList.remove("show");
+  ensureDailyMissions();
+  $("#prBerry").textContent = profile.berry;
+  const s = profile.stats;
+  const ach = profile.ach || {};
+  $("#prBody").innerHTML = `
+    <div class="hubchip" style="margin-top:6px">${ART[myAvatar] ? `<img class="avatar" style="width:30px;height:30px" src="${ART[myAvatar]}" alt="">` : "🏴‍☠️"}
+      <input id="prName" value="${myName}" maxlength="14" placeholder="Dein Name"
+        style="flex:1;border:none;background:none;font-weight:700;font-size:14px;color:var(--ink);text-align:left;padding:2px"></div>
+    ${avatarPickerHTML()}
+    <h3 style="color:var(--brass);font-size:13px;letter-spacing:.08em;margin:12px 0 2px">🎯 TAGESMISSIONEN</h3>
+    ${profile.daily.ms.map(m => `
+      <div class="mrow ${m.done ? "done" : ""}">
+        <span class="mrew">${m.done ? "✔" : "+" + MISSION_DEFS.find(d => d.id === m.id).rew + " 💰"}</span>
+        ${m.txt}
+        <div class="mbar"><i style="width:${(m.n / m.target) * 100}%"></i></div>
+        <div style="font-size:10.5px;color:var(--foam-dim);margin-top:2px">${m.n}/${m.target}</div>
+      </div>`).join("")}
+    <h3 style="color:var(--brass);font-size:13px;letter-spacing:.08em;margin:14px 0 4px">📊 STATISTIK</h3>
+    <div class="statgrid">
+      <div class="statbox"><b>${s.durakWins || 0}</b><span>Durak-Siege (${s.durakGames || 0} Partien)</span></div>
+      <div class="statbox"><b>${s.arenaWins || 0}</b><span>Arena-Siege (${s.arenaGames || 0} Kämpfe)</span></div>
+      <div class="statbox"><b>${s.packs || 0}</b><span>Packs geöffnet</span></div>
+      <div class="statbox"><b>${s.shoves || 0}</b><span>Angriffe geschoben</span></div>
+      <div class="statbox"><b>${s.defs || 0}</b><span>Verteidigungen</span></div>
+      <div class="statbox"><b>${s.legends || 0}</b><span>Legenden gespielt</span></div>
+    </div>
+    <h3 style="color:var(--brass);font-size:13px;letter-spacing:.08em;margin:14px 0 4px">🏅 ERFOLGE (${Object.keys(ach).length}/${ACH_DEFS.length})</h3>
+    ${ACH_DEFS.map(a => `
+      <div class="achrow ${ach[a.id] ? "" : "locked"}">
+        <span class="aicon">${a.icon}</span>
+        <span style="flex:1">${a.txt}</span>
+        <span style="color:#e8c06a;font-weight:700">${ach[a.id] ? "✔" : "+" + a.rew + " 💰"}</span>
+      </div>`).join("")}`;
+  wireAvatarPicker();
+  const nameInp = document.querySelector("#prName");
+  if(nameInp) nameInp.onchange = () => { saveName(nameInp.value); showToast("👤 Name gespeichert: " + (myName || "Pirat")); };
+  $("#profileScr").classList.add("show");
 }
 
 /* ---- Sammlung ---- */
@@ -2882,7 +3091,7 @@ function endBattle(win){
   const serie = bt.net === "host" ? `<br><span style="font-size:13px">Serie: Du ${aScore.me} · ${aFoeName} ${aScore.foe}</span>` : "";
   bt.msg = (win ? `🏆 SIEG! Du hast ${bt.net ? aFoeName : "die Arena"} bezwungen!` : `💀 Niederlage gegen ${foeLabel} …`) + serie;
   profile.stats.arenaGames++;
-  if(win) profile.stats.arenaWins++;
+  if(win){ profile.stats.arenaWins++; missionEvent("arenaWin"); }
   awardBerry(win ? 60 : 25, win ? (bt.net ? "Duell-Sieg" : "Arena-Sieg") : "Arena-Teilnahme");
   sfx(win ? "win" : "lose");
   battleRender();
@@ -3150,7 +3359,7 @@ function applyBattleState(s){
     const serie = s.score ? `<br><span style="font-size:13px">Serie: Du ${s.score.foe || 0} · ${aFoeName} ${s.score.me || 0}</span>` : "";
     bt.msg = (win ? `🏆 SIEG! Du hast ${aFoeName} bezwungen!` : `💀 Niederlage gegen ${aFoeName} …`) + serie;
     profile.stats.arenaGames++;
-    if(win) profile.stats.arenaWins++;
+    if(win){ profile.stats.arenaWins++; missionEvent("arenaWin"); }
     awardBerry(win ? 60 : 25, win ? "Duell-Sieg" : "Duell");
     sfx(win ? "win" : "lose");
     battleRender();
@@ -3178,6 +3387,149 @@ function armBattleTimer(){
 }
 
 /* ================================================================
+   P2P-KARTENTAUSCH: Duplikate direkt zwischen zwei Sammlungen
+   ================================================================ */
+const TRADE_PREFIX = "op-trade-";
+let tPeer = null, tConn = null, tRole = null, tCode = null, tFoeName = "Partner";
+let tMyOffer = null, tFoeOffer = null, tMyOk = false, tFoeOk = false, tDone = false;
+
+function tSend(m){ try{ if(tConn && tConn.open) tConn.send(m); }catch(e){} }
+function teardownTrade(){
+  try{ if(tConn) tConn.close(); }catch(e){}
+  try{ if(tPeer) tPeer.destroy(); }catch(e){}
+  tPeer = null; tConn = null; tRole = null; tCode = null; tFoeName = "Partner";
+  tMyOffer = null; tFoeOffer = null; tMyOk = false; tFoeOk = false; tDone = false;
+}
+function tradeDuplicates(){ return CARDS.filter(c => (profile.cards[c.id] || 0) >= 2); }
+function showTradeMenu(){
+  $("#collection").classList.remove("show");
+  const dups = tradeDuplicates();
+  showOverlayBox("🔄", "Karten tauschen",
+    `Tausche <b>Duplikate</b> direkt mit einem Freund — jeder gibt eine Doppelte, jeder bekommt eine.
+     <br><span style="font-size:12px">Du hast aktuell <b>${dups.length}</b> tauschbare Duplikate.</span>`,
+    [
+      { label:"🔄 Tausch-Raum erstellen", cb: tradeHost },
+      { label:"🔑 Tausch beitreten", cls:"alt", cb: () => tradeJoinUI("") },
+      { label:"↩ Zurück zur Sammlung", cb: () => { teardownTrade(); showCollection(); } },
+    ]);
+}
+function tradeHost(){
+  teardownTrade();
+  tRole = "host"; tCode = makeCode();
+  showOverlayBox("🔄", "Tausch-Raum wird erstellt …", "Verbinde …",
+    [{ label:"Abbrechen", cb: () => { teardownTrade(); showTradeMenu(); } }]);
+  try{ tPeer = new Peer(TRADE_PREFIX + tCode, { config: ICE_CONFIG }); }
+  catch(e){ showTradeMenu(); return; }
+  tPeer.on("open", () => {
+    showOverlayBox("🔄", "Tausch-Code",
+      `<b style="font-size:32px;letter-spacing:.28em">${tCode}</b><br><br>Dein Freund: Sammlung → 🔄 → „Tausch beitreten“.`,
+      [{ label:"Abbrechen", cb: () => { teardownTrade(); showTradeMenu(); } }]);
+  });
+  tPeer.on("connection", c => {
+    if(tConn){ try{ c.close(); }catch(e){} return; }
+    tConn = c;
+    c.on("open", () => tSend({ t:"hello", name: myName }));
+    c.on("data", onTradeMsg);
+    c.on("close", tradeGone);
+    c.on("error", tradeGone);
+  });
+  tPeer.on("error", err => {
+    if(err && err.type === "unavailable-id") tradeHost();
+    else showOverlayBox("⚠️", "Problem", peerErrText(err), [{ label:"↩", cb: showTradeMenu }]);
+  });
+}
+function tradeJoinUI(prefill){
+  showOverlayBox("🔑", "Tausch beitreten",
+    `<div class="chiplabel">Tausch-Code</div>
+     <input id="joinCode" value="${(prefill || "").toUpperCase()}" maxlength="5" autocapitalize="characters"
+       style="font-size:24px;letter-spacing:.3em">`,
+    [
+      { label:"Beitreten 🔄", cb: () => tradeJoin(document.querySelector("#joinCode").value) },
+      { label:"↩ Zurück", cb: showTradeMenu },
+    ]);
+}
+function tradeJoin(code){
+  code = (code || "").trim().toUpperCase();
+  if(code.length < 4){ tradeJoinUI(code); return; }
+  teardownTrade();
+  tRole = "guest"; tCode = code;
+  showOverlayBox("🔑", "Trete bei …", `Suche Tausch-Raum <b>${code}</b> …`,
+    [{ label:"Abbrechen", cb: () => { teardownTrade(); showTradeMenu(); } }]);
+  try{ tPeer = new Peer({ config: ICE_CONFIG }); }
+  catch(e){ showTradeMenu(); return; }
+  tPeer.on("open", () => {
+    tConn = tPeer.connect(TRADE_PREFIX + code, { reliable: true });
+    tConn.on("open", () => tSend({ t:"hello", name: myName }));
+    tConn.on("data", onTradeMsg);
+    tConn.on("close", tradeGone);
+    tConn.on("error", tradeGone);
+  });
+  tPeer.on("error", err => showOverlayBox("⚠️", "Problem", peerErrText(err), [{ label:"↩", cb: showTradeMenu }]));
+}
+function tradeGone(){
+  if(!tRole || tDone) return;
+  showOverlayBox("😕", "Verbindung getrennt", "Der Tausch-Partner ist weg — es wurde nichts getauscht.",
+    [{ label:"↩ Sammlung", cb: () => { teardownTrade(); showCollection(); } }]);
+}
+function onTradeMsg(m){
+  if(!m || typeof m !== "object") return;
+  if(m.t === "hello"){ tFoeName = ((m.name || "").trim() || "Partner").slice(0, 14); showTradeUI(); }
+  else if(m.t === "offer"){ tFoeOffer = CARD_BY_ID[m.id] ? m.id : null; tFoeOk = false; tMyOk = false; showTradeUI(); }
+  else if(m.t === "ok"){ tFoeOk = true; tryExecuteTrade() || showTradeUI(); }
+}
+function showTradeUI(){
+  if(tDone) return;
+  const dups = tradeDuplicates();
+  showOverlayBox("🔄", "Tausch mit " + tFoeName,
+    `<div class="tradecols">
+      <div><div class="chiplabel">Du gibst</div>
+        ${tMyOffer ? cardHTML(CARD_BY_ID[tMyOffer], "") : `<div class="tradeslot">Wähle unten eine Doppelte</div>`}</div>
+      <div><div class="chiplabel">${tFoeName} gibt</div>
+        ${tFoeOffer ? cardHTML(CARD_BY_ID[tFoeOffer], "") : `<div class="tradeslot">wählt noch …</div>`}</div>
+     </div>
+     <div style="font-size:11.5px;color:#7a6234;margin:6px 0">${tMyOk ? "✔ Du hast bestätigt — warte auf " + tFoeName + " …" : (tFoeOk ? tFoeName + " hat bestätigt!" : "")}</div>
+     <div class="chiplabel">Deine Duplikate</div>
+     <div class="avrow" style="min-height:60px">${dups.length ? dups.map(c =>
+       `<img class="avatar avpick ${tMyOffer === c.id ? "sel" : ""}" data-toffer="${c.id}" src="${ART[c.id] || ""}" title="${c.name}">`).join("")
+       : `<i style="font-size:12px;color:#7a6234">Keine Duplikate — öffne mehr Packs!</i>`}</div>`,
+    [
+      { label:"Tausch bestätigen ✔", cb: confirmTrade, disabled: !(tMyOffer && tFoeOffer && !tMyOk) },
+      { label:"✕ Tausch abbrechen", cb: () => { teardownTrade(); showCollection(); } },
+    ]);
+  document.querySelectorAll("[data-toffer]").forEach(el => {
+    el.onclick = () => {
+      tMyOffer = el.dataset.toffer;
+      tMyOk = false; tFoeOk = false;
+      tSend({ t:"offer", id: tMyOffer });
+      showTradeUI();
+    };
+  });
+}
+function confirmTrade(){
+  if(!(tMyOffer && tFoeOffer) || tMyOk || tDone) return;
+  tMyOk = true;
+  tSend({ t:"ok" });
+  tryExecuteTrade() || showTradeUI();
+}
+function tryExecuteTrade(){
+  if(tDone || !tMyOk || !tFoeOk || !tMyOffer || !tFoeOffer) return false;
+  tDone = true;
+  const gave = CARD_BY_ID[tMyOffer], got = CARD_BY_ID[tFoeOffer];
+  profile.cards[tMyOffer] = Math.max(1, (profile.cards[tMyOffer] || 2) - 1);
+  const isNew = addCard(tFoeOffer);
+  saveProfile();
+  checkAchievements();
+  sfx("win"); buzz([30, 40, 30]);
+  showOverlayBox("🎉", "Tausch abgeschlossen!",
+    `Du gibst <b>${gave.name}</b> und bekommst <b>${got.name}</b>${isNew ? " — <b>NEU</b> in deiner Sammlung!" : ""}`,
+    [
+      { label:"🔄 Nochmal tauschen", cb: () => { tMyOffer = null; tFoeOffer = null; tMyOk = false; tFoeOk = false; tDone = false; showTradeUI(); } },
+      { label:"↩ Sammlung", cb: () => { teardownTrade(); showCollection(); } },
+    ]);
+  return true;
+}
+
+/* ================================================================
    UI-VERDRAHTUNG
    ================================================================ */
 function scoreLine(){
@@ -3200,7 +3552,8 @@ function showStartOverlay(){
     <button class="obtn" id="ovDurak">🃏 Durak spielen</button>
     <button class="obtn alt" id="ovArena">⚔️ Kampf-Arena</button>
     <button class="obtn" id="ovPacks" style="background:linear-gradient(160deg,#b0791e,#7d5410)">🎁 Packs öffnen</button>
-    <button class="obtn ghost" id="ovCol">📚 Sammlung ansehen</button>
+    <button class="obtn ghost" id="ovCol">📚 Sammlung &amp; 🔄 Tausch</button>
+    <button class="obtn ghost" id="ovProfile">👤 Profil &amp; Missionen${(profile.daily && profile.daily.ms.some(m => !m.done)) ? " 🎯" : ""}</button>
     <button class="obtn ghost" id="ovRedeem">🎁 Geschenk-Code einlösen</button>
     ${running ? `<button class="obtn ghost" id="ovResume">Weiterspielen ↩</button>` : ""}`;
   $("#ovScore").textContent = "";
@@ -3210,6 +3563,7 @@ function showStartOverlay(){
   $("#ovArena").onclick = showArenaMenu;
   $("#ovPacks").onclick = showPacks;
   $("#ovCol").onclick = showCollection;
+  $("#ovProfile").onclick = showProfile;
   $("#ovRedeem").onclick = showRedeem;
   if(running) $("#ovResume").onclick = () => $("#overlay").classList.remove("show");
 }
@@ -3529,6 +3883,8 @@ $("#btnLog").addEventListener("click", () => {
 $("#btnNew").addEventListener("click", showStartOverlay);
 $("#colBack").addEventListener("click", () => { $("#collection").classList.remove("show"); showStartOverlay(); });
 $("#btBack").addEventListener("click", () => { $("#battle").classList.remove("show"); showStartOverlay(); });
+$("#prBack").addEventListener("click", () => { $("#profileScr").classList.remove("show"); showStartOverlay(); });
+$("#colTrade").addEventListener("click", showTradeMenu);
 
 /* Start — Profil laden, laufende Sitzung wiederherstellen oder per ?join=CODE beitreten */
 loadProfile();
