@@ -2556,6 +2556,39 @@ function awardBerry(n, why){
   addLog("💰", `+${n} Berry (${why})`);
 }
 
+/* ---- Geschenk-Codes ---- */
+const PROMO_CODES = { "NAKAMA187": 2500, "GRANDLINE": 300 };
+function showRedeem(){
+  showOverlayBox("🎁", "Geschenk-Code einlösen",
+    `<input id="promoCode" maxlength="16" placeholder="CODE" autocomplete="off"
+       style="font-size:22px;letter-spacing:.2em;text-transform:uppercase">`,
+    [
+      { label:"Einlösen 🎁", cb: () => redeemCode(document.querySelector("#promoCode").value) },
+      { label:"↩ Zurück", cb: showStartOverlay },
+    ]);
+}
+function redeemCode(code){
+  code = (code || "").trim().toUpperCase();
+  profile.redeemed = profile.redeemed || {};
+  if(!PROMO_CODES[code]){
+    showOverlayBox("❌", "Unbekannter Code", "Diesen Code kennt der Schiedsrichter nicht — prüf die Schreibweise.",
+      [{ label:"Nochmal versuchen", cb: showRedeem }, { label:"↩ Hub", cb: showStartOverlay }]);
+    sfx("bad");
+    return;
+  }
+  if(profile.redeemed[code]){
+    showOverlayBox("🤨", "Schon eingelöst", "Diesen Code hast du auf diesem Gerät bereits benutzt, du Schlingel.",
+      [{ label:"↩ Hub", cb: showStartOverlay }]);
+    return;
+  }
+  profile.redeemed[code] = 1;
+  awardBerry(PROMO_CODES[code], "Geschenk-Code " + code);
+  sfx("win"); buzz([40, 60, 40]);
+  showOverlayBox("💰", "+" + PROMO_CODES[code] + " Berry!",
+    `Der Code <b>${code}</b> wurde eingelöst — viel Spaß beim Pack-Ziehen! 🎁`,
+    [{ label:"🎁 Direkt Packs öffnen", cb: showPacks }, { label:"↩ Hub", cb: showStartOverlay }]);
+}
+
 /* ---- Packs ---- */
 function rollPack(){
   const tierFor = r => r < 0.30 ? "c" : r < 0.70 ? "r" : r < 0.92 ? "e" : "l";
@@ -2638,6 +2671,21 @@ function showCollection(){
    KAMPF-ARENA (inspiriert von Pokémon TCG Pocket: Front + Bank)
    ================================================================ */
 const LIGHT_COST = 1, HEAVY_COST = 3, KO_TARGET = 3, MAX_ENERGY = 6;
+/* Crew-Spezialfähigkeiten (gelten für die FRONT-Karte) */
+const ABILITY_CREWS = {
+  off:  ["beasts","bb","kidp","rocks","shikib","arlong","donq"],
+  def:  ["marine","wr","wb","kuja","barto","firetank","thriller"],
+  vamp: ["strohhut","bigmom","heart","revo","kozuki","rogerb","redhair","cross","skyp","newkama","bonney"],
+};
+const ABILITY_INFO = {
+  off:  { tag:"🗡 Offensiv", desc:"+5 Schaden auf alle Angriffe" },
+  def:  { tag:"🛡 Defensiv", desc:"−5 erlittener Schaden (min. 1)" },
+  vamp: { tag:"💚 Zäh",      desc:"+5 HP nach jedem eigenen Angriff" },
+};
+function abilityOf(crew){
+  for(const k of Object.keys(ABILITY_CREWS)) if(ABILITY_CREWS[k].includes(crew)) return k;
+  return null;
+}
 let bt = null;
 let btTeam = [];
 try{ btTeam = JSON.parse(localStorage.getItem("opdurak-team")) || []; }catch(e){}
@@ -2666,7 +2714,7 @@ function showTeamSelect(netMode){
           return `<div class="${i >= 0 ? "tsel" : ""}" data-n="${i + 1}" data-pick="${c.id}">${cardHTML(c, "")}</div>`;
         }).join("")}</div>
       </div>
-      <div style="font-size:11px;color:var(--foam-dim);padding-top:6px">Front-Karte kämpft, die Bank gibt 🤝 Crew-Bonus (+7 pro Kamerad derselben Crew, max. +14). Sieg: 3 K.O.s.</div>`;
+      <div style="font-size:11px;color:var(--foam-dim);padding-top:6px">Front kämpft, Bank gibt 🤝 Crew-Bonus (+7 je Kamerad derselben Crew, max. +14). Fähigkeiten der Front: 🗡 Offensiv-Crews +5 Schaden · 🛡 Defensiv-Crews −5 erlitten · 💚 Zähe Crews heilen +5 pro Angriff. Sieg: 3 K.O.s.</div>`;
     document.querySelectorAll("[data-pick]").forEach(el => {
       el.onclick = () => {
         const id = el.dataset.pick;
@@ -2724,7 +2772,8 @@ function crewBonus(side){
 }
 function dmgOf(side, heavy){
   const act = bt[side].units[bt[side].act];
-  return Math.round(act.card.str * (heavy ? 0.5 : 0.26)) + crewBonus(side);
+  const off = abilityOf(act.card.crew) === "off" ? 5 : 0;
+  return Math.round(act.card.str * (heavy ? 0.5 : 0.26)) + crewBonus(side) + off;
 }
 function battleAttack(side, heavy){
   // Online-Gast: Aktion nur an den Host senden
@@ -2737,10 +2786,17 @@ function battleAttack(side, heavy){
   const cost = heavy ? HEAVY_COST : LIGHT_COST;
   if(bt.over || bt.promote || s.energy < cost) return false;
   s.energy -= cost;
-  const dmg = dmgOf(side, heavy);
+  let dmg = dmgOf(side, heavy);
   const tgt = o.units[o.act];
+  const notes = [];
+  if(abilityOf(tgt.card.crew) === "def"){ dmg = Math.max(1, dmg - 5); notes.push("🛡−5"); }
   tgt.hp = Math.max(0, tgt.hp - dmg);
-  bt.msg = `${s.units[s.act].card.name} trifft ${tgt.card.name} — ${dmg} Schaden${heavy ? " 💥" : ""}!`;
+  const atkUnit = s.units[s.act];
+  if(abilityOf(atkUnit.card.crew) === "vamp" && atkUnit.hp > 0){
+    atkUnit.hp = Math.min(atkUnit.max, atkUnit.hp + 5);
+    notes.push("💚+5");
+  }
+  bt.msg = `${atkUnit.card.name} trifft ${tgt.card.name} — ${dmg} Schaden${heavy ? " 💥" : ""}!${notes.length ? " (" + notes.join(" ") + ")" : ""}`;
   sfx(heavy ? "boom" : "slam");
   if(heavy && s.units[s.act].card.str >= 94) legendFX(s.units[s.act].card);
   if(tgt.hp <= 0){
@@ -2817,11 +2873,14 @@ function endTurn(side){
   battleRender();
   if(!bt.net && bt.turn === "foe" && !bt.over) setTimeout(aiBattleTurn, 1150);
 }
+let aScore = { me: 0, foe: 0 };   // Duell-Serie im aktuellen Raum (Host-Sicht)
 function endBattle(win){
   bt.over = true;
   bt.winSide = win ? "me" : "foe";
   const foeLabel = bt.net ? aFoeName : "die Arena";
-  bt.msg = win ? `🏆 SIEG! Du hast ${bt.net ? aFoeName : "die Arena"} bezwungen!` : `💀 Niederlage gegen ${foeLabel} …`;
+  if(bt.net === "host") aScore[win ? "me" : "foe"]++;
+  const serie = bt.net === "host" ? `<br><span style="font-size:13px">Serie: Du ${aScore.me} · ${aFoeName} ${aScore.foe}</span>` : "";
+  bt.msg = (win ? `🏆 SIEG! Du hast ${bt.net ? aFoeName : "die Arena"} bezwungen!` : `💀 Niederlage gegen ${foeLabel} …`) + serie;
   profile.stats.arenaGames++;
   if(win) profile.stats.arenaWins++;
   awardBerry(win ? 60 : 25, win ? (bt.net ? "Duell-Sieg" : "Arena-Sieg") : "Arena-Teilnahme");
@@ -2859,8 +2918,9 @@ function battleRender(){
   const activeHTML = side => {
     const s = bt[side], act = s.units[s.act];
     const cb = crewBonus(side);
+    const ab = abilityOf(act.card.crew);
     return `<div class="bactive">${unitHTML(side, s.act, false)}
-      <div class="hptext">${act.hp}/${act.max} HP${cb ? " · 🤝+" + cb : ""}</div></div>`;
+      <div class="hptext">${act.hp}/${act.max} HP${cb ? " · 🤝+" + cb : ""}${ab ? " · " + ABILITY_INFO[ab].tag : ""}</div></div>`;
   };
   const promoteHint = bt.promote === "me" ? `<b style="color:#ffd76a">Deine Front ist K.O. — tippe eine Bank-Karte als Nachrücker!</b>` : "";
   $("#btBody").innerHTML = `
@@ -2911,7 +2971,7 @@ function teardownArena(){
   try{ if(aPeer) aPeer.destroy(); }catch(e){}
   aPeer = null; aConn = null; aRole = null; aCode = null;
   aMyTeam = null; aFoeTeam = null; aFoeName = "Gegner"; aFoeAvatar = null;
-  battleTimerKey = "";
+  battleTimerKey = ""; aScore = { me: 0, foe: 0 };
   if(bt && bt.net) bt = null;
 }
 function showArenaMenu(){
@@ -3062,7 +3122,7 @@ function applyArenaAction(m){
 function sendBattleState(){
   if(!bt || !aConn) return;
   const pk = s => ({ u: s.units.map(u => ({ id: u.card.id, hp: u.hp, ko: u.ko ? 1 : 0 })), act: s.act, en: s.energy, kos: s.kos });
-  aSend({ t:"bs", s:{ me: pk(bt.me), foe: pk(bt.foe), turn: bt.turn, promote: bt.promote, over: !!bt.over, win: bt.winSide || null, msg: bt.msg } });
+  aSend({ t:"bs", s:{ me: pk(bt.me), foe: pk(bt.foe), turn: bt.turn, promote: bt.promote, over: !!bt.over, win: bt.winSide || null, msg: bt.msg, score: { ...aScore } } });
 }
 function applyBattleState(s){
   const un = p => ({ units: p.u.map(x => ({ card: CARD_BY_ID[x.id], hp: x.hp, max: CARD_BY_ID[x.id].str, ko: !!x.ko })), act: p.act, energy: p.en, kos: p.kos });
@@ -3087,7 +3147,8 @@ function applyBattleState(s){
   }
   if(bt.over && !wasOver){
     const win = s.win === "foe";   // Host-Sicht: "foe" hat gewonnen = ich (Gast)
-    bt.msg = win ? `🏆 SIEG! Du hast ${aFoeName} bezwungen!` : `💀 Niederlage gegen ${aFoeName} …`;
+    const serie = s.score ? `<br><span style="font-size:13px">Serie: Du ${s.score.foe || 0} · ${aFoeName} ${s.score.me || 0}</span>` : "";
+    bt.msg = (win ? `🏆 SIEG! Du hast ${aFoeName} bezwungen!` : `💀 Niederlage gegen ${aFoeName} …`) + serie;
     profile.stats.arenaGames++;
     if(win) profile.stats.arenaWins++;
     awardBerry(win ? 60 : 25, win ? "Duell-Sieg" : "Duell");
@@ -3140,6 +3201,7 @@ function showStartOverlay(){
     <button class="obtn alt" id="ovArena">⚔️ Kampf-Arena</button>
     <button class="obtn" id="ovPacks" style="background:linear-gradient(160deg,#b0791e,#7d5410)">🎁 Packs öffnen</button>
     <button class="obtn ghost" id="ovCol">📚 Sammlung ansehen</button>
+    <button class="obtn ghost" id="ovRedeem">🎁 Geschenk-Code einlösen</button>
     ${running ? `<button class="obtn ghost" id="ovResume">Weiterspielen ↩</button>` : ""}`;
   $("#ovScore").textContent = "";
   $("#overlay").classList.add("show");
@@ -3148,6 +3210,7 @@ function showStartOverlay(){
   $("#ovArena").onclick = showArenaMenu;
   $("#ovPacks").onclick = showPacks;
   $("#ovCol").onclick = showCollection;
+  $("#ovRedeem").onclick = showRedeem;
   if(running) $("#ovResume").onclick = () => $("#overlay").classList.remove("show");
 }
 function showDurakMenu(){
@@ -3228,6 +3291,7 @@ function showDetail(card){
       <div class="crewchip" style="background:${crew.color}">${crew.flag} ${crew.name}</div>
       <div><b>🤝 Crew-Kameraden im Kartenpool:</b></div>
       <div class="fights">${mates.length ? mates.map(n => `<span>${n}</span>`).join("") : "<i style='color:var(--foam-dim)'>keine — einsamer Wolf</i>"}</div>
+      ${abilityOf(card.crew) ? `<div style="margin-top:6px;font-size:12px"><b>${ABILITY_INFO[abilityOf(card.crew)].tag}</b> (Arena): ${ABILITY_INFO[abilityOf(card.crew)].desc}</div>` : ""}
       ${TCG[card.id] ? `<div style="color:var(--foam-dim);font-size:11.5px;margin-top:6px">Sammelkarte: ${TCG[card.id]} (Bandai OPTCG)</div>` : ""}
       <p style="color:var(--foam-dim);font-size:11.5px;margin-top:8px">Nachlegen &amp; Reinwerfen nur bei gleicher aktueller Crew 🤝. Verteidigen nur mit klar höherer Stärke. Gleiche Crew wie ein Angriff = 🔁 Schieben möglich (solange nichts verteidigt ist).</p>
     </div>`;
