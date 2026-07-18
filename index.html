@@ -462,12 +462,11 @@
       <li>Nur solange <b>noch nichts verteidigt</b> wurde, der nächste Spieler genug Handkarten hat und maximal 5 Angriffe entstehen.</li>
       <li>Kann deine Karte sowohl verteidigen als auch schieben (starker Crew-Kamerad), fragt dich das Spiel: 🛡 oder 🔁?</li>
     </ul>
-    <h3>Nachlegen</h3>
+    <h3>Nachlegen &amp; Mitangreifer</h3>
     <ul>
-      <li>Der Angreifer darf insgesamt bis zu <b>5 Karten</b> legen.</li>
-      <li>Jede nachgelegte Karte braucht eine <b>Verbindung</b> zu einer Karte auf dem Tisch (Angriffs- oder Verteidigungskarte):</li>
-      <li>🤝 <b>Crew/Fraktion</b>: gleiche aktuelle Organisation (Stand: neueste Folgen). Ex-Crews &amp; temporäre Allianzen zählen nicht. Die Marine ist komplett eine Fraktion; ganze Crews inkl. Untergebener zählen.</li>
-      <li>⚔️ <b>Kampf</b>: echter Kanon-Kampf — beide haben mindestens eine Attacke ausgeführt, richtige Szene, kein Zufallstreffer.</li>
+      <li>Insgesamt dürfen bis zu <b>5 Angriffskarten</b> liegen.</li>
+      <li>Jede nachgelegte Karte braucht die <b>gleiche aktuelle Crew</b> wie eine Karte auf dem Tisch (Angriffs- oder Verteidigungskarte). Ex-Crews &amp; temporäre Allianzen zählen nicht; die Marine ist komplett eine Fraktion, ganze Crews inkl. Untergebener zählen. <i>(Kanon-Kämpfe zählen nicht mehr als Verbindung.)</i></li>
+      <li>🤝 <b>Gemeinsam angreifen</b>: Beendet der Hauptangreifer seinen Angriff, dürfen die anderen Spieler (außer dem Verteidiger) der Reihe nach passende Crew-Karten <b>mit reinwerfen</b> — auch beim Nachwerfen, wenn der Verteidiger aufnimmt.</li>
     </ul>
     <h3>Rundenende</h3>
     <ul>
@@ -483,8 +482,7 @@
       <li>Kizaru &gt; Killer, Sanji · Warcury &gt; Yamato</li>
       <li>Yamato &gt; Queen · Queen &gt; Perospero</li>
       <li>Nekomamushi &gt; X Drake · Big Mom &gt; Sengoku · Brook &gt; Bartolomeo</li>
-      <li>Gültige Kämpfe: Jack↔Nekomamushi, Kaido↔Big Mom (Onigashima)</li>
-      <li>Ungültig: Buggy↔Bon Clay (nur Allianz), Jack↔Brook (nie begegnet), Hawkins↔Brook/Bartolomeo</li>
+      <li><i>Hinweis: Kanon-Kämpfe zählen seit der Regel-Reform nicht mehr als Nachlege-Verbindung — nur noch die aktuelle Crew.</i></li>
     </ul>
     <h3>Modi &amp; Bedienung</h3>
     <ul>
@@ -741,6 +739,9 @@ let finished = {};            // seat -> true: alle Karten los, aus dem Spiel
 let deckSize = 57;
 let table = [];               // [{atk:card, def:card|null}]
 let attacker = "p1";
+let throwOrder = ["p1"];      // Wurf-Reihenfolge: Hauptangreifer, dann Mitangreifer (ohne Verteidiger)
+let throwIdx = 0;
+const whoThrows = () => throwOrder[Math.min(throwIdx, throwOrder.length - 1)] || attacker;
 let maxAttacks = 5;           // pro Runde: min(5, Handgröße des Verteidigers)
 let phase = "idle";           // attack | defend | pile | resolving | over | idle
 let viewer = "p1";            // wessen Hand unten angezeigt wird
@@ -801,15 +802,12 @@ function defenseRuling(defCard, atkCard){
     return { ok:false, text:`Patt! ${defCard.name} (${defCard.str}) vs. ${atkCard.name} (${atkCard.str}) — Gleichstand reicht nicht, das Patt geht an den Angreifer.` };
   return   { ok:false, text:`${defCard.name} (${defCard.str}) ist schwächer als ${atkCard.name} (${atkCard.str}) — keine gültige Verteidigung.` };
 }
+/* Verbindung fürs Nachlegen: NUR noch die gleiche aktuelle Crew (Kämpfe zählen nicht mehr) */
 function connectionFor(card, exceptSelf){
   const tcards = allTableCards().filter(t => !exceptSelf || t.id !== card.id);
   for(const t of tcards){
     if(t.crew === card.crew)
       return { type:"crew", with:t, text:`${card.name} und ${t.name} gehören beide zu: ${CREWS[card.crew].name}.` };
-  }
-  for(const t of tcards){
-    if(fought(t.id, card.id))
-      return { type:"fight", with:t, text:`${card.name} und ${t.name} hatten einen echten Kanon-Kampf.` };
   }
   return null;
 }
@@ -820,7 +818,7 @@ function attackProblem(card, piling){
     return `Der Verteidiger hat keine freien Handkarten mehr — ein weiterer Angriff ist unzulässig.`;
   if(table.length === 0) return null;
   if(!connectionFor(card))
-    return `${card.name} hat keine Verbindung zu einer Tischkarte — weder gleiche aktuelle Crew noch ein echter Kanon-Kampf. (Allianzen & Ex-Crews zählen nicht!)`;
+    return `${card.name} gehört zu keiner Crew auf dem Tisch — Nachlegen nur mit gleicher aktueller Crew. (Allianzen & Ex-Crews zählen nicht!)`;
   return null;
 }
 /* Ist Schieben mit dieser Karte gerade ERLAUBT? (Anwendbarkeit prüft der Aufrufer) */
@@ -1030,7 +1028,8 @@ function render(){
     if(table.length === 0){
       a.innerHTML = `<div id="hint">Wähle eine Karte für den Angriff … (erste Karte: freie Wahl)</div>`;
     } else {
-      a.innerHTML = `<button class="abtn end" id="btnEnd" ${allDefended() ? "" : "disabled"}>Angriff beenden ✓</button>`;
+      const label = whoThrows() === attacker ? "Angriff beenden ✓" : "Passen ✓";
+      a.innerHTML = `<button class="abtn end" id="btnEnd" ${allDefended() ? "" : "disabled"}>${label}</button>`;
     }
   } else if(phase === "defend"){
     if(choiceId && hands[viewer].some(c => c && c.id === choiceId)){
@@ -1161,7 +1160,7 @@ function flyClone(card, from, to, delay){
 
 /* Wer ist gerade am Zug? */
 function currentActor(){
-  if(phase === "attack" || phase === "pile" || phase === "resolving") return attacker;
+  if(phase === "attack" || phase === "pile" || phase === "resolving") return whoThrows();
   if(phase === "defend") return defenderId();
   return viewer;
 }
@@ -1219,9 +1218,20 @@ function newGame(selectedMode, opts){
   startRound(true);
 }
 
+function buildThrowOrder(){
+  const def = defenderId();
+  const ai0 = seats.indexOf(attacker);
+  throwOrder = [attacker];
+  for(let k = 1; k < seats.length; k++){
+    const s = seats[(ai0 + k) % seats.length];
+    if(s !== def && !finished[s]) throwOrder.push(s);
+  }
+  throwIdx = 0;
+}
 function startRound(isFirst){
   table = [];
   maxAttacks = Math.min(MAX_ATTACKS_LIMIT, hands[defenderId()].length);
+  buildThrowOrder();
   phase = "attack";
   if(isAI(attacker)){
     render();
@@ -1367,19 +1377,21 @@ function tapHandCard(card, intent){  // lokale Eingabe dieses Geräts; true = Ka
    intent: undefined | "defend" | "shove" (bei mehrdeutigen Verteidiger-Karten) */
 function performPlay(card, intent){
   if(phase === "attack" || phase === "pile"){
-    if(!hands[attacker].some(c => c.id === card.id)) return false;
+    const w = whoThrows();
+    if(!hands[w].some(c => c.id === card.id)) return false;
     const piling = phase === "pile";
     const problem = attackProblem(card, piling);
     if(problem){ say(problem, "bad"); sfx("bad"); return false; }
-    playAttackCard(attacker, card);
+    playAttackCard(w, card);
     sfx("play");
     raisedId = null;
     if(table.length === 1){
-      ruling(`${Nm(attacker)} ${isYou(attacker) ? "greifst" : "greift"} an: <b>${card.name}</b> (${card.str}).`);
+      ruling(`${Nm(w)} ${isYou(w) ? "greifst" : "greift"} an: <b>${card.name}</b> (${card.str}).`);
     } else {
       const conn = connectionFor(card, true);
-      const reason = conn ? (conn.type === "crew" ? "🤝 " : "⚔️ ") + conn.text : "";
-      ruling(`Nachgelegt: <b>${card.name}</b> (${card.str}). ${reason}`);
+      const reason = conn ? "🤝 " + conn.text : "";
+      const verb = w === attacker ? "Nachgelegt" : `🤝 ${Nm(w)} wirft mit rein`;
+      ruling(`${verb}: <b>${card.name}</b> (${card.str}). ${reason}`);
     }
     if(piling){
       render();   // kein Auto-Abschluss: „Fertig“ muss gedrückt werden
@@ -1446,6 +1458,7 @@ function tryShove(card){
   if(card.str >= 94) legendFX(card);
   attacker = shover;                        // der Schieber wird Angreifer
   const nd = defenderId();
+  buildThrowOrder();                        // Wurf-Reihenfolge um den neuen Angreifer neu aufbauen
   maxAttacks = Math.max(table.length, Math.min(MAX_ATTACKS_LIMIT, hands[nd].length));
   sfx("shove"); buzz(30);
   ruling(`🔁 ${CREWS[card.crew].name}! ${Nm(shover)} legt <b>${card.name}</b> (${card.str}) zur Crew dazu und schiebt den ganzen Angriff weiter an <b>${Nm(nd)}</b>!`);
@@ -1470,10 +1483,26 @@ function afterDefense(){
   handoff();
 }
 
+/* Der aktuelle Werfer verzichtet — nächster Mitangreifer ist dran, oder die Runde endet */
+function passTurn(){
+  const piling = phase === "pile";
+  while(throwIdx < throwOrder.length - 1){
+    throwIdx++;
+    const w = whoThrows();
+    if(!isAI(w) && hands[w].some(c => attackProblem(c, piling) === null)){
+      say(`🤝 ${Nm(w)} ${isYou(w) ? "darfst" : "darf"} jetzt Karten der gleichen Crews mit reinwerfen — oder passen.`);
+      handoff();
+      return;
+    }
+    // ohne passende Karte (oder KI): automatisch zum Nächsten
+  }
+  if(phase === "attack") finishRound("defended");
+  else completePileTake();
+}
 function onEndRound(){
-  if(phase !== "attack" || !allDefended() || isAI(attacker) || myId() !== attacker) return;
+  if(phase !== "attack" || !allDefended() || isAI(whoThrows()) || myId() !== whoThrows()) return;
   if(isRemote()){ send({ t:"a", a:"end" }); return; }
-  finishRound("defended");
+  passTurn();
 }
 function onTake(){
   const defId = defenderId();
@@ -1491,19 +1520,20 @@ function performTake(){
     later(aiPileStep, AI_DELAY);
   } else {
     phase = "pile";
-    const canPile = table.length < maxAttacks && hands[attacker].some(c => attackProblem(c, true) === null);
+    const w = whoThrows();
+    const canPile = table.length < maxAttacks && hands[w].some(c => attackProblem(c, true) === null);
     if(canPile){
-      say(`${Nm(defId)} nimmt auf! ${Nm(attacker)} ${isYou(attacker) ? "darfst" : "darf"} noch Karten mit Verbindung nachwerfen.`);
+      say(`${Nm(defId)} nimmt auf! ${Nm(w)} ${isYou(w) ? "darfst" : "darf"} noch Karten der gleichen Crews nachwerfen.`);
       handoff();
     } else {
-      completePileTake();
+      passTurn();   // springt zum nächsten Werfer mit passenden Karten — oder schließt ab
     }
   }
 }
 function onPileDone(){
-  if(phase !== "pile" || isAI(attacker) || myId() !== attacker) return;
+  if(phase !== "pile" || isAI(whoThrows()) || myId() !== whoThrows()) return;
   if(isRemote()){ send({ t:"a", a:"pileDone" }); return; }
-  completePileTake();
+  passTurn();
 }
 function completePileTake(){
   phase = "resolving";  // sperrt Buttons & Karten sofort (kein Doppel-Tipp)
@@ -1959,9 +1989,9 @@ function applyRemoteAction(seat, m){
   } else if(m.a === "take" && phase === "defend"){
     performTake();
   } else if(m.a === "end" && phase === "attack" && allDefended()){
-    finishRound("defended");
+    passTurn();
   } else if(m.a === "pileDone" && phase === "pile"){
-    completePileTake();
+    passTurn();
   }
 }
 /* Gast: Zug lokal vorprüfen (sofortiges Feedback + Auswahl), dann an Host senden */
@@ -2009,6 +2039,7 @@ function snapshotFor(seat){
     finished: { ...finished },
     table: table.map(p => ({ a: p.atk.id, d: p.def ? p.def.id : null, jd: p.justDef ? 1 : 0 })),
     attacker, maxAttacks, phase,
+    thrower: whoThrows(),
     offline: { ...offlineSeats },
     avatars: { ...avatars },
     ref: lastSay,
@@ -2031,6 +2062,7 @@ function applySnapshot(s){
   }
   table = s.table.map(p => ({ atk: CARD_BY_ID[p.a], def: p.d ? CARD_BY_ID[p.d] : null, justDef: !!p.jd }));
   attacker = s.attacker; maxAttacks = s.maxAttacks; phase = s.phase;
+  throwOrder = [s.thrower || s.attacker]; throwIdx = 0;   // Gast braucht nur den aktuellen Werfer
   offlineSeats = s.offline || {};
   avatars = s.avatars || avatars;
   if(s.ref && (!prevSnap || !prevSnap.ref || prevSnap.ref.html !== s.ref.html)) say(s.ref.html, s.ref.mood);
@@ -2077,7 +2109,7 @@ function persistHost(){
         deck: deck.map(c => c.id), discard: discard.map(c => c.id),
         hands: Object.fromEntries(seats.map(s => [s, hands[s].map(c => c.id)])),
         table: table.map(p => ({ a: p.atk.id, d: p.def ? p.def.id : null })),
-        attacker, maxAttacks, phase, finished, ref: lastSay, over: lastOver,
+        attacker, throwOrder, throwIdx, maxAttacks, phase, finished, ref: lastSay, over: lastOver,
       },
     }));
   }catch(e){}
@@ -2108,6 +2140,7 @@ function resumeHostRoom(saved){
   for(const s of seats) hands[s] = (st.hands[s] || []).map(id => CARD_BY_ID[id]).filter(Boolean);
   table = st.table.map(p => ({ atk: CARD_BY_ID[p.a], def: p.d ? CARD_BY_ID[p.d] : null }));
   attacker = st.attacker; maxAttacks = st.maxAttacks; phase = st.phase;
+  throwOrder = st.throwOrder || [st.attacker]; throwIdx = st.throwIdx || 0;
   finished = st.finished || {}; lastOver = st.over || null;
   seats.filter(s => s !== "p1").forEach(s => { offlineSeats[s] = true; });
   gen++;
@@ -2263,17 +2296,17 @@ function showEndOverlay(icon, title, text){
 function showDetail(card){
   $("#detailName").textContent = card.name;
   const crew = CREWS[card.crew];
-  const fightNames = fightsOf(card);
+  const mates = CARDS.filter(c => c.crew === card.crew && c.id !== card.id).map(c => c.name);
   $("#detailBody").innerHTML = `
     ${cardHTML(card, "")}
     <div class="dmeta">
       <div><b>Stärke:</b> ${card.str}</div>
       <div><b>Version:</b> ${card.v}</div>
       <div class="crewchip" style="background:${crew.color}">${crew.flag} ${crew.name}</div>
-      <div><b>⚔️ Kanon-Kämpfe:</b></div>
-      <div class="fights">${fightNames.length ? fightNames.map(n => `<span>${n}</span>`).join("") : "<i style='color:var(--foam-dim)'>keine im Deck</i>"}</div>
+      <div><b>🤝 Crew-Kameraden im Kartenpool:</b></div>
+      <div class="fights">${mates.length ? mates.map(n => `<span>${n}</span>`).join("") : "<i style='color:var(--foam-dim)'>keine — einsamer Wolf</i>"}</div>
       ${TCG[card.id] ? `<div style="color:var(--foam-dim);font-size:11.5px;margin-top:6px">Sammelkarte: ${TCG[card.id]} (Bandai OPTCG)</div>` : ""}
-      <p style="color:var(--foam-dim);font-size:11.5px;margin-top:8px">Nachlegen bei gleicher aktueller Crew 🤝 oder echtem Kanon-Kampf ⚔️. Verteidigen nur mit klar höherer Stärke. Gleiche Crew wie ein Angriff = 🔁 Schieben möglich (solange nichts verteidigt ist).</p>
+      <p style="color:var(--foam-dim);font-size:11.5px;margin-top:8px">Nachlegen &amp; Reinwerfen nur bei gleicher aktueller Crew 🤝. Verteidigen nur mit klar höherer Stärke. Gleiche Crew wie ein Angriff = 🔁 Schieben möglich (solange nichts verteidigt ist).</p>
     </div>`;
   $("#detailModal").classList.add("show");
 }
