@@ -447,6 +447,125 @@
     padding:7px 10px; margin:5px 0; font-size:14px; font-weight:600; color:var(--ink);
   }
 
+  /* ============ Hub / Profil ============ */
+  .hubchip{
+    display:flex; align-items:center; gap:8px; justify-content:center;
+    background:#fdf6e0; border:2px solid var(--ink); border-radius:10px;
+    padding:7px 12px; margin-bottom:10px; font-size:13px; font-weight:700; color:var(--ink);
+  }
+  .hubchip .berry{ color:#a8720e; }
+
+  /* ============ Vollbild-Screens (Sammlung / Arena) ============ */
+  .screen{
+    position:fixed; inset:0; z-index:45; display:none; flex-direction:column;
+    background:
+      radial-gradient(120% 90% at 50% -20%, #1d3a4d 0%, transparent 55%),
+      var(--sea-1);
+    max-width:520px; margin:0 auto;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .screen.show{ display:flex; }
+  .screen header{ flex:none; }
+  .scr-body{ flex:1; overflow-y:auto; padding:6px 12px 20px; min-height:0; }
+
+  /* Sammlung */
+  #colGrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(78px, 1fr)); gap:8px; }
+  .colcard{ position:relative; }
+  .colcard .card{ width:100%; height:auto; aspect-ratio:192/268; }
+  .colcard.miss .card{ filter:grayscale(1) brightness(.32); }
+  .colcard.miss .c-str{ visibility:hidden; }
+  .colcard .cnt{
+    position:absolute; bottom:-5px; right:-3px; z-index:3;
+    background:var(--brass); color:#231a08; font-size:10.5px; font-weight:800;
+    border-radius:99px; padding:1px 7px; border:1px solid #8a6a1e;
+  }
+  .colcard .newtag{
+    position:absolute; top:-6px; left:-4px; z-index:3;
+    background:var(--seal); color:#fff; font-size:9px; font-weight:800;
+    border-radius:6px; padding:1px 6px; transform:rotate(-8deg);
+  }
+  .rar-l .card{ box-shadow:0 0 0 2px #f0c34e, 0 0 14px rgba(240,195,78,.5); }
+  .rar-e .card{ box-shadow:0 0 0 2px #b06ee0, 0 0 10px rgba(176,110,224,.4); }
+  .rar-r .card{ box-shadow:0 0 0 2px #4e9dd8, 0 0 8px rgba(78,157,216,.35); }
+
+  /* Pack-Öffnung */
+  #packStage{
+    display:flex; flex-direction:column; align-items:center; gap:14px; padding:10px 0 24px;
+  }
+  #packCard{
+    width:150px; height:210px; border-radius:12px; cursor:pointer;
+    background:
+      radial-gradient(circle at 50% 34%, rgba(212,160,60,.5) 0%, transparent 62%),
+      linear-gradient(150deg, #2a4a5c, #14242f 70%);
+    border:2px solid var(--brass);
+    box-shadow:0 10px 30px rgba(0,0,0,.6), inset 0 0 0 2px rgba(212,160,60,.3);
+    display:grid; place-items:center; font-size:56px;
+    animation:packwobble 2.2s ease-in-out infinite;
+  }
+  @keyframes packwobble{ 0%,100%{ transform:rotate(-2deg);} 50%{ transform:rotate(2.5deg) scale(1.03);} }
+  #packRow{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; min-height:120px; }
+  #packRow .card{ width:76px; height:106px; }
+  #packRow .pk{ position:relative; animation:pkflip .5s cubic-bezier(.2,1.5,.4,1) backwards; }
+  @keyframes pkflip{ from{ transform:rotateY(90deg) scale(.6); opacity:0; } }
+  #packRow .pk .newtag{
+    position:absolute; top:-7px; left:-5px; z-index:4;
+    background:var(--seal); color:#fff; font-size:9.5px; font-weight:800;
+    border-radius:6px; padding:1px 6px; transform:rotate(-8deg);
+  }
+
+  /* ============ Kampf-Arena ============ */
+  #battle .scr-body{ display:flex; flex-direction:column; gap:6px; overflow:hidden; padding:4px 10px 10px; }
+  .bside{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .bside.foe{ flex-direction:column; }
+  .bmeta{
+    display:flex; gap:10px; align-items:center; font-size:12.5px; color:var(--foam);
+    font-weight:700;
+  }
+  .bmeta .kos{ color:#f0c34e; letter-spacing:.1em; }
+  .bmeta .energy{ color:#7fd8e8; }
+  .bactive{ position:relative; }
+  .bactive .card{ width:104px; height:145px; }
+  .bench{ display:flex; gap:6px; justify-content:center; }
+  .bench .bslot{ position:relative; }
+  .bench .card{ width:56px; height:78px; }
+  .bench .bslot.pick .card{ box-shadow:0 0 0 2px var(--brass), 0 0 14px rgba(212,160,60,.6); cursor:pointer; }
+  .hpbar{
+    height:6px; border-radius:4px; background:#25404f; margin-top:3px; overflow:hidden;
+    border:1px solid #35566a;
+  }
+  .hpbar i{ display:block; height:100%; background:linear-gradient(90deg, #63d488, #2f9d5c); transition:width .35s ease; }
+  .hpbar.low i{ background:linear-gradient(90deg, #e0796d, #b53a2e); }
+  .hptext{ font-size:10px; color:var(--foam-dim); text-align:center; font-variant-numeric:tabular-nums; }
+  #bmid{
+    flex:1; min-height:34px; display:grid; place-items:center; position:relative;
+    color:var(--foam-dim); font-size:12.5px; text-align:center; padding:0 8px;
+  }
+  #bactions{ display:flex; gap:7px; padding:2px 2px 0; }
+  .batk{ flex:1; padding:10px 6px; border-radius:10px; border:none; color:#fff; font-weight:800; font-size:12.5px; box-shadow:0 3px 0 rgba(0,0,0,.35); }
+  .batk:active{ transform:translateY(2px); box-shadow:none; }
+  .batk.light{ background:linear-gradient(160deg, #2f8fb4, #1f5d80); }
+  .batk.heavy{ background:linear-gradient(160deg, var(--seal), var(--seal-dark)); }
+  .batk.swap{ background:linear-gradient(160deg, #5a7d8f, #3a5563); }
+  .batk:disabled{ opacity:.4; transform:none; }
+  .dmgpop{
+    position:fixed; z-index:66; font-size:30px; font-weight:900; pointer-events:none;
+    color:#ffd76a; text-shadow:0 2px 8px #000, 0 0 16px rgba(212,160,60,.7);
+    animation:dmgfloat 1s ease-out forwards; font-family:Georgia, serif;
+  }
+  @keyframes dmgfloat{ 0%{ transform:translateY(6px) scale(.5); opacity:0; } 20%{ opacity:1; transform:scale(1.2);} 100%{ transform:translateY(-44px) scale(1); opacity:0; } }
+  .card.hit{ animation:hitshake .4s; }
+  @keyframes hitshake{ 0%,100%{ transform:none; } 25%{ transform:translateX(-7px) rotate(-3deg);} 60%{ transform:translateX(6px) rotate(2deg);} }
+  .card.koed{ filter:grayscale(1) brightness(.4); transition:filter .4s; }
+  .teamgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)); gap:7px; }
+  .teamgrid .card{ width:100%; height:auto; aspect-ratio:192/268; cursor:pointer; }
+  .teamgrid .tsel .card{ box-shadow:0 0 0 3px var(--brass), 0 0 16px rgba(212,160,60,.7); }
+  .teamgrid .tsel{ position:relative; }
+  .teamgrid .tsel::after{
+    content:attr(data-n); position:absolute; top:-6px; right:-4px; z-index:4;
+    background:var(--brass); color:#231a08; font-weight:800; font-size:11px;
+    border-radius:99px; padding:1px 7px;
+  }
+
   @media (prefers-reduced-motion:reduce){
     *{ animation:none !important; transition:none !important; }
   }
@@ -478,6 +597,26 @@
   <section id="handWrap" aria-label="Handkarten"><div id="hand"></div></section>
 
   <footer id="actions"></footer>
+</div>
+
+<!-- Sammlung -->
+<div class="screen" id="collection">
+  <header>
+    <h1 class="display">📚 SAMMLUNG</h1>
+    <span class="pilechip" id="colMeter">0/100</span>
+    <span class="pilechip">💰 <b id="colBerry">0</b></span>
+    <button class="hbtn" id="colBack">↩</button>
+  </header>
+  <div class="scr-body"><div id="colGrid"></div></div>
+</div>
+
+<!-- Kampf-Arena -->
+<div class="screen" id="battle">
+  <header>
+    <h1 class="display">⚔️ KAMPF-ARENA</h1>
+    <button class="hbtn" id="btBack">↩</button>
+  </header>
+  <div class="scr-body" id="btBody"></div>
 </div>
 
 <div id="flyLayer"></div>
@@ -1433,6 +1572,14 @@ function checkGameOver(){
   if(duraksLine) text += `<br><br><span style="font-size:12px;color:#7a6234">${duraksLine}</span>`;
   lastOver = { icon, title, text, result, ranking };
   sfx(result !== "draw" && result === myId() ? "lose" : "win");
+  // Berry-Belohnung fürs lokale Profil
+  profile.stats.durakGames++;
+  if(mode === "hotseat") awardBerry(20, "Durak-Runde");
+  else {
+    const won = result !== "draw" && result !== myId();
+    if(won) profile.stats.durakWins++;
+    awardBerry(won ? 40 : 15, won ? "Durak-Sieg" : "Durak-Runde");
+  }
   addLog(icon, title);
   render();
   showEndOverlay(icon, title, text);
@@ -2209,6 +2356,11 @@ function applySnapshot(s){
   render();
   if(s.over && !overShown){
     overShown = true;
+    // Gast: Berry-Belohnung (das Spielende kommt per Snapshot, checkGameOver läuft nur beim Host)
+    profile.stats.durakGames++;
+    const gWon = s.over.result !== "draw" && s.over.result !== mySeat;
+    if(gWon) profile.stats.durakWins++;
+    awardBerry(gWon ? 40 : 15, gWon ? "Durak-Sieg" : "Durak-Runde");
     showOverlayBox(s.over.icon, s.over.title,
       s.over.text + "<br><br><i>Der Raum-Ersteller kann eine Revanche starten — bleib einfach hier.</i>",
       [{ label:"↩ Menü verlassen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
@@ -2363,6 +2515,353 @@ function onlineResumeCheck(){
 }
 
 /* ================================================================
+   PROFIL, SAMMLUNG & PACKS (lokaler Account)
+   ================================================================ */
+const PACK_COST = 100;
+let profile = { berry: 250, cards: {}, seen: {}, lastDaily: "", dailyHit: false,
+  stats: { durakWins: 0, durakGames: 0, arenaWins: 0, arenaGames: 0, packs: 0 } };
+
+function rarityOf(c){ return c.str >= 90 ? "l" : c.str >= 80 ? "e" : c.str >= 65 ? "r" : "c"; }
+const RARITY_NAME = { l:"Legendär ✨", e:"Episch", r:"Selten", c:"Gewöhnlich" };
+
+function loadProfile(){
+  try{
+    const p = JSON.parse(localStorage.getItem("opdurak-profile"));
+    if(p && p.cards) profile = Object.assign(profile, p);
+  }catch(e){}
+  if(!Object.keys(profile.cards).length){
+    // Starter-Sammlung: 7 Gewöhnliche, 3 Seltene, 1 Epische
+    const pull = (tier, n) => shuffle(CARDS.filter(c => rarityOf(c) === tier)).slice(0, n);
+    [...pull("c", 7), ...pull("r", 3), ...pull("e", 1)].forEach(c => addCard(c.id));
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  if(profile.lastDaily !== today){
+    profile.lastDaily = today;
+    profile.berry += 100;
+    profile.dailyHit = true;
+  }
+  saveProfile();
+}
+function saveProfile(){ try{ localStorage.setItem("opdurak-profile", JSON.stringify(profile)); }catch(e){} }
+function addCard(id){
+  profile.cards[id] = (profile.cards[id] || 0) + 1;
+  const isNew = !profile.seen[id];
+  profile.seen[id] = true;
+  return isNew;
+}
+function ownedCount(){ return Object.keys(profile.cards).length; }
+function awardBerry(n, why){
+  profile.berry += n;
+  saveProfile();
+  addLog("💰", `+${n} Berry (${why})`);
+}
+
+/* ---- Packs ---- */
+function rollPack(){
+  const tierFor = r => r < 0.30 ? "c" : r < 0.70 ? "r" : r < 0.92 ? "e" : "l";
+  const slots = ["c", "c",
+    Math.random() < 0.5 ? "c" : "r",
+    Math.random() < 0.65 ? "r" : "e",
+    tierFor(Math.random())];
+  return slots.map(t => {
+    const pool = CARDS.filter(c => rarityOf(c) === t);
+    return pool[Math.floor(Math.random() * pool.length)];
+  });
+}
+function showPacks(){
+  showOverlayBox("🎁", "Karten-Packs",
+    `<div class="hubchip"><span>💰 <b class="berry">${profile.berry}</b> Berry</span><span>·</span><span>📚 ${ownedCount()}/${CARDS.length}</span></div>
+     <div id="packStage">
+       <div id="packCard" title="Pack öffnen (${PACK_COST} Berry)">🎁</div>
+       <div id="packRow"></div>
+     </div>
+     <div style="font-size:11.5px;color:#7a6234">Tippe das Pack an — 5 Karten für ${PACK_COST} Berry.<br>
+     Berry gibt's für Durak-Partien, Arena-Kämpfe und täglich +100 beim ersten Öffnen.</div>`,
+    [{ label:"↩ Zurück zum Hub", cb: showStartOverlay }]);
+  updatePackBtn();
+  document.querySelector("#packCard").onclick = openPack;
+}
+function updatePackBtn(){
+  const pc = document.querySelector("#packCard");
+  if(!pc || !pc.style) return;
+  const ok = profile.berry >= PACK_COST;
+  pc.style.filter = ok ? "" : "grayscale(.85) brightness(.7)";
+  pc.style.animation = ok ? "" : "none";
+}
+let packBusy = false;
+function openPack(){
+  if(packBusy) return;
+  if(profile.berry < PACK_COST){ sfx("bad"); say(`Zu wenig Berry — ein Pack kostet ${PACK_COST}. Spiel Durak oder Arena!`, "bad"); return; }
+  packBusy = true;
+  profile.berry -= PACK_COST;
+  profile.stats.packs++;
+  const cards = rollPack();
+  const row = document.querySelector("#packRow");
+  row.innerHTML = "";
+  sfx("shove"); buzz(25);
+  cards.forEach((c, i) => {
+    setTimeout(() => {
+      const isNew = addCard(c.id);
+      saveProfile();
+      const div = document.createElement("div");
+      div.className = "pk rar-" + rarityOf(c);
+      div.innerHTML = cardHTML(c, "") + (isNew ? `<div class="newtag">NEU!</div>` : "");
+      row.appendChild(div);
+      const rar = rarityOf(c);
+      if(rar === "l") legendFX(c);
+      else if(rar === "e") sfx("slam");
+      else sfx("play");
+      const chip = document.querySelector(".hubchip .berry");
+      if(chip) chip.textContent = profile.berry;
+      if(i === cards.length - 1){ packBusy = false; updatePackBtn(); }
+    }, 420 * i + 250);
+  });
+}
+
+/* ---- Sammlung ---- */
+function showCollection(){
+  $("#overlay").classList.remove("show");
+  $("#colMeter").textContent = ownedCount() + "/" + CARDS.length;
+  $("#colBerry").textContent = profile.berry;
+  const sorted = CARDS.slice().sort((a, b) => b.str - a.str);
+  $("#colGrid").innerHTML = sorted.map(c => {
+    const n = profile.cards[c.id] || 0;
+    return `<div class="colcard ${n ? "rar-" + rarityOf(c) : "miss"}">
+      ${cardHTML(c, "")}
+      ${n > 1 ? `<div class="cnt">×${n}</div>` : ""}
+    </div>`;
+  }).join("");
+  $("#collection").classList.add("show");
+}
+
+/* ================================================================
+   KAMPF-ARENA (inspiriert von Pokémon TCG Pocket: Front + Bank)
+   ================================================================ */
+const LIGHT_COST = 1, HEAVY_COST = 3, KO_TARGET = 3, MAX_ENERGY = 6;
+let bt = null;
+let btTeam = [];
+try{ btTeam = JSON.parse(localStorage.getItem("opdurak-team")) || []; }catch(e){}
+
+function showTeamSelect(){
+  $("#overlay").classList.remove("show");
+  const owned = CARDS.filter(c => profile.cards[c.id]).sort((a, b) => b.str - a.str);
+  const sel = btTeam.filter(id => profile.cards[id]).slice(0, 6);
+  const bb = $("#btBody");
+  const paint = () => {
+    bb.innerHTML = `
+      <div class="bmeta" style="justify-content:space-between;width:100%">
+        <span>Team wählen (${sel.length}/6)</span>
+        <span style="display:flex;gap:6px">
+          <button class="hbtn" id="btAuto">⚡ Auto</button>
+          <button class="hbtn" id="btGo" ${sel.length === 6 ? "" : "disabled"} style="${sel.length === 6 ? "background:var(--seal);border-color:var(--seal-dark)" : ""}">Kampf! ⚔️</button>
+        </span>
+      </div>
+      <div style="overflow-y:auto;flex:1;min-height:0;margin-top:8px">
+        <div class="teamgrid">${owned.map(c => {
+          const i = sel.indexOf(c.id);
+          return `<div class="${i >= 0 ? "tsel" : ""}" data-n="${i + 1}" data-pick="${c.id}">${cardHTML(c, "")}</div>`;
+        }).join("")}</div>
+      </div>
+      <div style="font-size:11px;color:var(--foam-dim);padding-top:6px">Front-Karte kämpft, die Bank gibt 🤝 Crew-Bonus (+7 pro Kamerad derselben Crew, max. +14). Sieg: 3 K.O.s.</div>`;
+    document.querySelectorAll("[data-pick]").forEach(el => {
+      el.onclick = () => {
+        const id = el.dataset.pick;
+        const i = sel.indexOf(id);
+        if(i >= 0) sel.splice(i, 1);
+        else if(sel.length < 6) sel.push(id);
+        else return;
+        sfx("play");
+        paint();
+      };
+    });
+    document.querySelector("#btAuto").onclick = () => {
+      sel.length = 0;
+      owned.slice(0, 6).forEach(c => sel.push(c.id));
+      paint();
+    };
+    document.querySelector("#btGo").onclick = () => {
+      if(sel.length !== 6) return;
+      btTeam = sel.slice();
+      try{ localStorage.setItem("opdurak-team", JSON.stringify(btTeam)); }catch(e){}
+      startBattle(btTeam);
+    };
+  };
+  paint();
+  $("#battle").classList.add("show");
+}
+
+function startBattle(teamIds){
+  const mk = ids => ids.map(id => ({ card: CARD_BY_ID[id], hp: CARD_BY_ID[id].str, max: CARD_BY_ID[id].str, ko: false }));
+  const myAvg = teamIds.reduce((s, id) => s + CARD_BY_ID[id].str, 0) / teamIds.length;
+  const near = shuffle(CARDS.filter(c => Math.abs(c.str - myAvg) <= 18));
+  const foeIds = (near.length >= 6 ? near : shuffle(CARDS.slice())).slice(0, 6).map(c => c.id);
+  bt = {
+    me:  { units: mk(teamIds), act: 0, energy: 1, kos: 0 },
+    foe: { units: mk(foeIds),  act: 0, energy: 1, kos: 0 },
+    turn: Math.random() < 0.5 ? "me" : "foe",
+    over: false, promote: null,
+    msg: "Der Kampf beginnt — " + (Math.random() < 0.5 ? "zeig ihnen die Macht deiner Crew!" : "auf zur Arena!"),
+  };
+  battleRender();
+  if(bt.turn === "foe") setTimeout(aiBattleTurn, 1100);
+}
+function crewBonus(side){
+  const s = bt[side];
+  const act = s.units[s.act];
+  const mates = s.units.filter((u, i) => i !== s.act && !u.ko && u.card.crew === act.card.crew).length;
+  return Math.min(2, mates) * 7;
+}
+function dmgOf(side, heavy){
+  const act = bt[side].units[bt[side].act];
+  return Math.round(act.card.str * (heavy ? 0.5 : 0.26)) + crewBonus(side);
+}
+function battleAttack(side, heavy){
+  const s = bt[side], o = bt[side === "me" ? "foe" : "me"];
+  const cost = heavy ? HEAVY_COST : LIGHT_COST;
+  if(bt.over || bt.promote || s.energy < cost) return false;
+  s.energy -= cost;
+  const dmg = dmgOf(side, heavy);
+  const tgt = o.units[o.act];
+  tgt.hp = Math.max(0, tgt.hp - dmg);
+  bt.msg = `${s.units[s.act].card.name} trifft ${tgt.card.name} — ${dmg} Schaden${heavy ? " 💥" : ""}!`;
+  sfx(heavy ? "boom" : "slam");
+  if(heavy && s.units[s.act].card.str >= 94) legendFX(s.units[s.act].card);
+  if(tgt.hp <= 0){
+    tgt.ko = true; s.kos++;
+    bt.msg += ` ☠️ ${tgt.card.name} ist K.O.!`;
+    sfx("take");
+    if(s.kos >= KO_TARGET || o.units.every(u => u.ko)){ endBattle(side === "me"); battleFxLater(side, dmg, heavy); return true; }
+    if(side === "foe") bt.promote = "me";
+    else promoteBest("foe");
+  }
+  endTurn(side);
+  battleFxLater(side, dmg, heavy);
+  return true;
+}
+function battleFxLater(side, dmg, heavy){
+  setTimeout(() => battleFxHit(side === "me" ? "foe" : "mine", dmg, heavy), 40);
+}
+function battleFxHit(cls, dmg, heavy){
+  const el = document.querySelector(`#battle .bside.${cls} .bactive .card`);
+  if(!el || !el.getBoundingClientRect) return;
+  el.classList.add("hit");
+  setTimeout(() => { try{ el.classList.remove("hit"); }catch(e){} }, 500);
+  const r = el.getBoundingClientRect();
+  const d = document.createElement("div");
+  d.className = "dmgpop";
+  d.textContent = "-" + dmg;
+  d.style.left = (r.left + r.width / 2 - 18) + "px";
+  d.style.top = (r.top + 8) + "px";
+  document.body.appendChild(d);
+  setTimeout(() => d.remove(), 1100);
+  buzz(heavy ? [20, 20, 45] : 18);
+}
+function promoteBest(side){
+  const s = bt[side];
+  let best = -1;
+  s.units.forEach((u, i) => { if(!u.ko && i !== s.act && (best < 0 || u.hp > s.units[best].hp)) best = i; });
+  if(best >= 0) s.act = best;
+}
+function choosePromote(idx){
+  if(!bt || bt.promote !== "me" || bt.me.units[idx].ko || bt.over || idx === bt.me.act) return;
+  bt.me.act = idx;
+  bt.promote = null;
+  bt.msg = `${bt.me.units[idx].card.name} rückt an die Front!`;
+  sfx("play");
+  bt.turn = "me";
+  bt.me.energy = Math.min(MAX_ENERGY, bt.me.energy + 1);
+  battleRender();
+}
+function battleSwap(side, idx){
+  const s = bt[side];
+  if(bt.over || bt.promote || s.units[idx].ko || idx === s.act) return false;
+  s.act = idx;
+  bt.msg = `${side === "me" ? "Du wechselst" : "Der Gegner wechselt"} auf ${s.units[idx].card.name}.`;
+  sfx("play");
+  endTurn(side);
+  return true;
+}
+function endTurn(side){
+  if(bt.over) return;
+  if(bt.promote){ battleRender(); return; }   // erst Front nachbesetzen, dann geht's weiter
+  bt.turn = side === "me" ? "foe" : "me";
+  bt[bt.turn].energy = Math.min(MAX_ENERGY, bt[bt.turn].energy + 1);
+  battleRender();
+  if(bt.turn === "foe" && !bt.over) setTimeout(aiBattleTurn, 1150);
+}
+function endBattle(win){
+  bt.over = true;
+  bt.msg = win ? "🏆 SIEG! Die Arena ist bezwungen!" : "💀 Niederlage … dein Team wurde besiegt.";
+  profile.stats.arenaGames++;
+  if(win) profile.stats.arenaWins++;
+  awardBerry(win ? 60 : 25, win ? "Arena-Sieg" : "Arena-Teilnahme");
+  sfx(win ? "win" : "lose");
+  battleRender();
+}
+function aiBattleTurn(){
+  if(!bt || bt.over || bt.turn !== "foe" || bt.promote) return;
+  const s = bt.foe;
+  const meAct = bt.me.units[bt.me.act];
+  const heavyDmg = dmgOf("foe", true);
+  if(s.energy >= HEAVY_COST && (heavyDmg >= meAct.hp || s.energy >= 5 || Math.random() < 0.4)) battleAttack("foe", true);
+  else battleAttack("foe", false);
+}
+function battleRender(){
+  if(!bt) return;
+  const metaHTML = side => `<div class="bmeta">
+    <span>${side === "me" ? "⚓ Du" : "🏴‍☠️ Arena-Gegner"}</span>
+    <span class="kos">${"★".repeat(bt[side].kos)}${"☆".repeat(Math.max(0, KO_TARGET - bt[side].kos))}</span>
+    <span class="energy">⚡ ${bt[side].energy}</span>
+  </div>`;
+  const unitHTML = (side, i, small) => {
+    const u = bt[side].units[i];
+    const pct = (u.hp / u.max) * 100;
+    return `${cardHTML(u.card, (small ? "small" : "") + (u.ko ? " koed" : ""))}
+      <div class="hpbar ${pct < 35 ? "low" : ""}"><i style="width:${pct}%"></i></div>`;
+  };
+  const benchHTML = side => {
+    const s = bt[side];
+    const pickable = side === "me" && !bt.over && (bt.promote === "me" || (bt.turn === "me" && !bt.promote));
+    return `<div class="bench">${s.units.map((u, i) => i).filter(i => i !== s.act).map(i =>
+      `<div class="bslot ${pickable && !bt[side].units[i].ko ? "pick" : ""}" data-bench="${side}:${i}">${unitHTML(side, i, true)}</div>`).join("")}</div>`;
+  };
+  const activeHTML = side => {
+    const s = bt[side], act = s.units[s.act];
+    const cb = crewBonus(side);
+    return `<div class="bactive">${unitHTML(side, s.act, false)}
+      <div class="hptext">${act.hp}/${act.max} HP${cb ? " · 🤝+" + cb : ""}</div></div>`;
+  };
+  const promoteHint = bt.promote === "me" ? `<b style="color:#ffd76a">Deine Front ist K.O. — tippe eine Bank-Karte als Nachrücker!</b>` : "";
+  $("#btBody").innerHTML = `
+    <div class="bside foe">${metaHTML("foe")}${benchHTML("foe")}${activeHTML("foe")}</div>
+    <div id="bmid">${promoteHint || bt.msg || ""}</div>
+    <div class="bside mine">${activeHTML("me")}${benchHTML("me")}${metaHTML("me")}</div>
+    <div id="bactions">${bt.over ? `
+      <button class="batk light" id="btAgain">⚔️ Nochmal</button>
+      <button class="batk swap" id="btLeave">↩ Zurück zum Hub</button>` : `
+      <button class="batk light" id="btLight" ${bt.turn === "me" && !bt.promote && bt.me.energy >= LIGHT_COST ? "" : "disabled"}>⚡ Angriff (1) · ${dmgOf("me", false)}</button>
+      <button class="batk heavy" id="btHeavy" ${bt.turn === "me" && !bt.promote && bt.me.energy >= HEAVY_COST ? "" : "disabled"}>💥 Spezial (3) · ${dmgOf("me", true)}</button>`}
+    </div>`;
+  if(bt.over){
+    document.querySelector("#btAgain").onclick = () => showTeamSelect();
+    document.querySelector("#btLeave").onclick = () => { $("#battle").classList.remove("show"); showStartOverlay(); };
+  } else {
+    const l = document.querySelector("#btLight"), h = document.querySelector("#btHeavy");
+    if(l) l.onclick = () => battleAttack("me", false);
+    if(h) h.onclick = () => battleAttack("me", true);
+  }
+  document.querySelectorAll("[data-bench]").forEach(el => {
+    el.onclick = () => {
+      const parts = el.dataset.bench.split(":");
+      if(parts[0] !== "me") return;
+      const idx = parseInt(parts[1], 10);
+      if(bt.promote === "me") choosePromote(idx);
+      else if(bt.turn === "me" && !bt.over) battleSwap("me", idx);
+    };
+  });
+}
+
+/* ================================================================
    UI-VERDRAHTUNG
    ================================================================ */
 function scoreLine(){
@@ -2370,10 +2869,36 @@ function scoreLine(){
   const sc = score.ai;
   return `Siege: Du ${sc.p1} · Gegner ${sc.p2} · Remis ${sc.draw}`;
 }
+/* Hub: Einstieg mit Profil, beiden Spielen, Packs & Sammlung */
 function showStartOverlay(){
+  $("#collection").classList.remove("show");
+  $("#battle").classList.remove("show");
   const running = phase !== "idle" && phase !== "over" && mode !== "online";
   $("#ovIcon").textContent = "🏴‍☠️";
   $("#ovTitle").textContent = "One-Piece-Durak";
+  $("#ovText").innerHTML = "";
+  $("#ovBtns").innerHTML = `
+    <div class="hubchip">${ART[myAvatar] ? `<img class="avatar" style="width:26px;height:26px" src="${ART[myAvatar]}" alt="">` : "🏴‍☠️"}
+      <b>${myName || "Pirat"}</b> · <span class="berry">💰 ${profile.berry}</span> · 📚 ${ownedCount()}/${CARDS.length}
+      ${profile.dailyHit ? `<span style="color:#2f9d5c;font-size:11px">+100 Tagesbonus!</span>` : ""}</div>
+    <button class="obtn" id="ovDurak">🃏 Durak spielen</button>
+    <button class="obtn alt" id="ovArena">⚔️ Kampf-Arena</button>
+    <button class="obtn" id="ovPacks" style="background:linear-gradient(160deg,#b0791e,#7d5410)">🎁 Packs öffnen</button>
+    <button class="obtn ghost" id="ovCol">📚 Sammlung ansehen</button>
+    ${running ? `<button class="obtn ghost" id="ovResume">Weiterspielen ↩</button>` : ""}`;
+  $("#ovScore").textContent = "";
+  $("#overlay").classList.add("show");
+  profile.dailyHit = false;
+  $("#ovDurak").onclick = showDurakMenu;
+  $("#ovArena").onclick = showTeamSelect;
+  $("#ovPacks").onclick = showPacks;
+  $("#ovCol").onclick = showCollection;
+  if(running) $("#ovResume").onclick = () => $("#overlay").classList.remove("show");
+}
+function showDurakMenu(){
+  const running = phase !== "idle" && phase !== "over" && mode !== "online";
+  $("#ovIcon").textContent = "🃏";
+  $("#ovTitle").textContent = "Durak";
   $("#ovText").innerHTML = ONLINE
     ? "Spielt <b>live mit 2–6 Spielern</b> — jeder auf seinem Handy. Oder zusammen an einem Gerät. Wer zuletzt Karten hält, ist der <b>Durak</b>!"
     : "Schlage Angriffe mit <b>stärkeren</b> Charakteren. Lege nach über <b>Crew</b> 🤝 oder <b>Kanon-Kampf</b> ⚔️. Wer zuletzt Karten hält, ist der <b>Durak</b>!";
@@ -2462,6 +2987,7 @@ document.addEventListener("click", e => {
   const cardEl = e.target.closest(".card[data-id]");
   if(cardEl){
     if(cardEl.closest("#hand")) return; // Hand läuft über Pointer-Gesten (anheben/spielen)
+    if(cardEl.closest("[data-pick]") || cardEl.closest("[data-bench]")) return; // Team-Wahl/Bank: eigene Klick-Logik
     if(!cardEl.closest("#detailBody") && !cardEl.closest("#flyLayer")) showDetail(CARD_BY_ID[cardEl.dataset.id]);
     return;
   }
@@ -2682,8 +3208,11 @@ $("#btnLog").addEventListener("click", () => {
   $("#logModal").classList.add("show");
 });
 $("#btnNew").addEventListener("click", showStartOverlay);
+$("#colBack").addEventListener("click", () => { $("#collection").classList.remove("show"); showStartOverlay(); });
+$("#btBack").addEventListener("click", () => { $("#battle").classList.remove("show"); showStartOverlay(); });
 
-/* Start — laufende Sitzung wiederherstellen oder per ?join=CODE direkt beitreten */
+/* Start — Profil laden, laufende Sitzung wiederherstellen oder per ?join=CODE beitreten */
+loadProfile();
 const joinParam = (ONLINE && typeof location !== "undefined")
   ? new URLSearchParams(location.search).get("join") : null;
 if(ONLINE && tryRestoreHostSession()){ /* Overlay fragt: Partie fortsetzen? */ }
