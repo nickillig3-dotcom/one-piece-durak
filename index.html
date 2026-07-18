@@ -2642,7 +2642,11 @@ let bt = null;
 let btTeam = [];
 try{ btTeam = JSON.parse(localStorage.getItem("opdurak-team")) || []; }catch(e){}
 
-function showTeamSelect(){
+let teamCtx = "ai";   // "ai" | "net" — wofür wird das Team gerade gewählt?
+function showTeamSelect(netMode){
+  teamCtx = netMode ? "net" : "ai";
+  if(!netMode) teardownArena();
+  bt = null;
   $("#overlay").classList.remove("show");
   const owned = CARDS.filter(c => profile.cards[c.id]).sort((a, b) => b.str - a.str);
   const sel = btTeam.filter(id => profile.cards[id]).slice(0, 6);
@@ -2683,7 +2687,14 @@ function showTeamSelect(){
       if(sel.length !== 6) return;
       btTeam = sel.slice();
       try{ localStorage.setItem("opdurak-team", JSON.stringify(btTeam)); }catch(e){}
-      startBattle(btTeam);
+      if(teamCtx === "net"){
+        aMyTeam = btTeam.slice();
+        aSend({ t:"team", ids: aMyTeam });
+        showOverlayBox("⚔️", "Team steht!", `Warte auf das Team von <b>${aFoeName}</b> …`, []);
+        maybeStartArena();
+      } else {
+        startBattle(btTeam);
+      }
     };
   };
   paint();
@@ -2716,6 +2727,12 @@ function dmgOf(side, heavy){
   return Math.round(act.card.str * (heavy ? 0.5 : 0.26)) + crewBonus(side);
 }
 function battleAttack(side, heavy){
+  // Online-Gast: Aktion nur an den Host senden
+  if(bt.net === "guest"){
+    if(side === "me" && bt.turn === "me" && !bt.promote && bt.me.energy >= (heavy ? HEAVY_COST : LIGHT_COST))
+      aSend({ t:"a", k:"atk", heavy: !!heavy });
+    return true;
+  }
   const s = bt[side], o = bt[side === "me" ? "foe" : "me"];
   const cost = heavy ? HEAVY_COST : LIGHT_COST;
   if(bt.over || bt.promote || s.energy < cost) return false;
@@ -2731,7 +2748,8 @@ function battleAttack(side, heavy){
     bt.msg += ` ☠️ ${tgt.card.name} ist K.O.!`;
     sfx("take");
     if(s.kos >= KO_TARGET || o.units.every(u => u.ko)){ endBattle(side === "me"); battleFxLater(side, dmg, heavy); return true; }
-    if(side === "foe") bt.promote = "me";
+    if(bt.net) bt.promote = side === "me" ? "foe" : "me";   // im Duell wählt jeder selbst
+    else if(side === "foe") bt.promote = "me";
     else promoteBest("foe");
   }
   endTurn(side);
@@ -2763,16 +2781,26 @@ function promoteBest(side){
   if(best >= 0) s.act = best;
 }
 function choosePromote(idx){
-  if(!bt || bt.promote !== "me" || bt.me.units[idx].ko || bt.over || idx === bt.me.act) return;
-  bt.me.act = idx;
+  if(!bt || bt.promote !== "me" || bt.over) return;
+  if(bt.net === "guest"){ aSend({ t:"a", k:"pro", idx }); return; }
+  choosePromoteSide("me", idx);
+}
+function choosePromoteSide(side, idx){
+  const s = bt[side];
+  if(bt.promote !== side || !s.units[idx] || s.units[idx].ko || idx === s.act) return;
+  s.act = idx;
   bt.promote = null;
-  bt.msg = `${bt.me.units[idx].card.name} rückt an die Front!`;
+  bt.msg = `${s.units[idx].card.name} rückt an die Front!`;
   sfx("play");
-  bt.turn = "me";
-  bt.me.energy = Math.min(MAX_ENERGY, bt.me.energy + 1);
+  bt.turn = side;
+  s.energy = Math.min(MAX_ENERGY, s.energy + 1);
   battleRender();
 }
 function battleSwap(side, idx){
+  if(bt.net === "guest"){
+    if(side === "me" && bt.turn === "me" && !bt.promote) aSend({ t:"a", k:"swap", idx });
+    return true;
+  }
   const s = bt[side];
   if(bt.over || bt.promote || s.units[idx].ko || idx === s.act) return false;
   s.act = idx;
@@ -2787,14 +2815,16 @@ function endTurn(side){
   bt.turn = side === "me" ? "foe" : "me";
   bt[bt.turn].energy = Math.min(MAX_ENERGY, bt[bt.turn].energy + 1);
   battleRender();
-  if(bt.turn === "foe" && !bt.over) setTimeout(aiBattleTurn, 1150);
+  if(!bt.net && bt.turn === "foe" && !bt.over) setTimeout(aiBattleTurn, 1150);
 }
 function endBattle(win){
   bt.over = true;
-  bt.msg = win ? "🏆 SIEG! Die Arena ist bezwungen!" : "💀 Niederlage … dein Team wurde besiegt.";
+  bt.winSide = win ? "me" : "foe";
+  const foeLabel = bt.net ? aFoeName : "die Arena";
+  bt.msg = win ? `🏆 SIEG! Du hast ${bt.net ? aFoeName : "die Arena"} bezwungen!` : `💀 Niederlage gegen ${foeLabel} …`;
   profile.stats.arenaGames++;
   if(win) profile.stats.arenaWins++;
-  awardBerry(win ? 60 : 25, win ? "Arena-Sieg" : "Arena-Teilnahme");
+  awardBerry(win ? 60 : 25, win ? (bt.net ? "Duell-Sieg" : "Arena-Sieg") : "Arena-Teilnahme");
   sfx(win ? "win" : "lose");
   battleRender();
 }
@@ -2808,8 +2838,9 @@ function aiBattleTurn(){
 }
 function battleRender(){
   if(!bt) return;
+  if(bt.net === "host"){ sendBattleState(); armBattleTimer(); }
   const metaHTML = side => `<div class="bmeta">
-    <span>${side === "me" ? "⚓ Du" : "🏴‍☠️ Arena-Gegner"}</span>
+    <span>${side === "me" ? "⚓ Du" : "🏴‍☠️ " + (bt.net ? aFoeName : "Arena-Gegner")}</span>
     <span class="kos">${"★".repeat(bt[side].kos)}${"☆".repeat(Math.max(0, KO_TARGET - bt[side].kos))}</span>
     <span class="energy">⚡ ${bt[side].energy}</span>
   </div>`;
@@ -2843,8 +2874,11 @@ function battleRender(){
       <button class="batk heavy" id="btHeavy" ${bt.turn === "me" && !bt.promote && bt.me.energy >= HEAVY_COST ? "" : "disabled"}>💥 Spezial (3) · ${dmgOf("me", true)}</button>`}
     </div>`;
   if(bt.over){
-    document.querySelector("#btAgain").onclick = () => showTeamSelect();
-    document.querySelector("#btLeave").onclick = () => { $("#battle").classList.remove("show"); showStartOverlay(); };
+    document.querySelector("#btAgain").onclick = () => {
+      if(bt && bt.net && aConn && aConn.open){ aFoeTeam = null; showTeamSelect(true); }
+      else showTeamSelect();
+    };
+    document.querySelector("#btLeave").onclick = () => { teardownArena(); $("#battle").classList.remove("show"); showStartOverlay(); };
   } else {
     const l = document.querySelector("#btLight"), h = document.querySelector("#btHeavy");
     if(l) l.onclick = () => battleAttack("me", false);
@@ -2859,6 +2893,227 @@ function battleRender(){
       else if(bt.turn === "me" && !bt.over) battleSwap("me", idx);
     };
   });
+}
+
+/* ================================================================
+   ONLINE-DUELL (Arena): eigener PeerJS-Kanal, Host-autoritativ.
+   Jeder kämpft mit dem Team aus seiner EIGENEN Sammlung.
+   ================================================================ */
+const ARENA_PREFIX = "op-arena-";
+const ARENA_TURN_MS = 20000;
+let aPeer = null, aConn = null, aRole = null, aCode = null;
+let aFoeName = "Gegner", aFoeAvatar = null, aMyTeam = null, aFoeTeam = null;
+let battleTimerKey = "";
+
+function aSend(m){ try{ if(aConn && aConn.open) aConn.send(m); }catch(e){} }
+function teardownArena(){
+  try{ if(aConn) aConn.close(); }catch(e){}
+  try{ if(aPeer) aPeer.destroy(); }catch(e){}
+  aPeer = null; aConn = null; aRole = null; aCode = null;
+  aMyTeam = null; aFoeTeam = null; aFoeName = "Gegner"; aFoeAvatar = null;
+  battleTimerKey = "";
+  if(bt && bt.net) bt = null;
+}
+function showArenaMenu(){
+  showOverlayBox("⚔️", "Kampf-Arena",
+    "Front-Karte kämpft, die Bank gibt 🤝 Crew-Bonus. Sieg bei 3 K.O.s — Belohnung in Berry!",
+    [
+      { label:"🤖 Gegen den Arena-Geist", cb: () => showTeamSelect() },
+      { label:"🌐 Online-Duell erstellen", cls:"alt", cb: arenaCreateUI },
+      { label:"🔑 Duell beitreten", cls:"alt", cb: () => arenaJoinUI("") },
+      { label:"↩ Zurück zum Hub", cb: () => { teardownArena(); showStartOverlay(); } },
+    ]);
+}
+function arenaCreateUI(){
+  showOverlayBox("🌐", "Online-Duell erstellen",
+    `Jeder kämpft mit dem Team aus seiner <b>eigenen Sammlung</b>!<br>
+     <div class="chiplabel">Dein Name</div>
+     <input id="plName" value="${myName}" maxlength="14" placeholder="z. B. Ruffy" autocomplete="off">
+     ${avatarPickerHTML()}`,
+    [
+      { label:"Duell-Raum erstellen 🌐", cb: () => { saveName(document.querySelector("#plName").value); arenaHost(); } },
+      { label:"↩ Zurück", cb: showArenaMenu },
+    ]);
+  wireAvatarPicker();
+}
+function arenaHost(){
+  teardownArena();
+  aRole = "host"; aCode = makeCode();
+  showOverlayBox("🌐", "Duell-Raum wird erstellt …", "Verbinde zum Vermittlungsserver …",
+    [{ label:"Abbrechen", cb: () => { teardownArena(); showArenaMenu(); } }]);
+  try{ aPeer = new Peer(ARENA_PREFIX + aCode, { config: ICE_CONFIG }); }
+  catch(e){ showArenaMenu(); return; }
+  aPeer.on("open", () => {
+    showOverlayBox("🌐", "Dein Duell-Code",
+      `<b style="font-size:32px;letter-spacing:.28em">${aCode}</b><br><br>
+       Dein Gegner: Arena → „Duell beitreten“ → Code eingeben.<br>Sobald er da ist, wählt ihr eure Teams!`,
+      [{ label:"Abbrechen", cb: () => { teardownArena(); showArenaMenu(); } }]);
+  });
+  aPeer.on("connection", c => {
+    if(aConn){ try{ c.close(); }catch(e){} return; }
+    aConn = c;
+    c.on("open", () => aSend({ t:"hello", name: myName, avatar: myAvatar }));
+    c.on("data", onArenaMsg);
+    c.on("close", arenaGone);
+    c.on("error", arenaGone);
+  });
+  aPeer.on("error", err => {
+    if(err && err.type === "unavailable-id") arenaHost();
+    else showOverlayBox("⚠️", "Online-Problem", peerErrText(err), [{ label:"↩ Arena", cb: showArenaMenu }]);
+  });
+}
+function arenaJoinUI(prefill){
+  showOverlayBox("🔑", "Duell beitreten",
+    `<div class="chiplabel">Dein Name</div>
+     <input id="plName" value="${myName}" maxlength="14" placeholder="z. B. Zorro" autocomplete="off">
+     ${avatarPickerHTML()}
+     <div class="chiplabel">Duell-Code</div>
+     <input id="joinCode" value="${(prefill || "").toUpperCase()}" maxlength="5" autocomplete="off" autocapitalize="characters"
+       style="font-size:24px;letter-spacing:.3em">`,
+    [
+      { label:"Beitreten ⚔️", cb: () => { saveName(document.querySelector("#plName").value); arenaJoin(document.querySelector("#joinCode").value); } },
+      { label:"↩ Zurück", cb: showArenaMenu },
+    ]);
+  wireAvatarPicker();
+}
+function arenaJoin(code){
+  code = (code || "").trim().toUpperCase();
+  if(code.length < 4){ arenaJoinUI(code); return; }
+  teardownArena();
+  aRole = "guest"; aCode = code;
+  showOverlayBox("🔑", "Trete bei …", `Suche Duell <b>${code}</b> …`,
+    [{ label:"Abbrechen", cb: () => { teardownArena(); showArenaMenu(); } }]);
+  try{ aPeer = new Peer({ config: ICE_CONFIG }); }
+  catch(e){ showArenaMenu(); return; }
+  aPeer.on("open", () => {
+    aConn = aPeer.connect(ARENA_PREFIX + code, { reliable: true });
+    aConn.on("open", () => aSend({ t:"hello", name: myName, avatar: myAvatar }));
+    aConn.on("data", onArenaMsg);
+    aConn.on("close", arenaGone);
+    aConn.on("error", arenaGone);
+  });
+  aPeer.on("error", err => showOverlayBox("⚠️", "Online-Problem", peerErrText(err), [{ label:"↩ Arena", cb: showArenaMenu }]));
+}
+function arenaGone(){
+  if(!aRole) return;
+  if(bt && bt.net === "host" && !bt.over){
+    endBattle(true);
+    bt.msg = "📴 Dein Gegner hat das Duell verlassen — Sieg durch Aufgabe!";
+    battleRender();
+  } else if(bt && bt.net === "guest" && !bt.over){
+    bt.over = true;
+    bt.msg = "📴 Verbindung zum Gegner verloren — Sieg durch Aufgabe!";
+    profile.stats.arenaGames++; profile.stats.arenaWins++;
+    awardBerry(60, "Duell-Sieg (Aufgabe)");
+    sfx("win");
+    battleRender();
+  } else if(!bt || !bt.net){
+    showOverlayBox("😕", "Verbindung getrennt", "Der Duell-Gegner ist nicht mehr erreichbar.",
+      [{ label:"↩ Arena", cb: () => { teardownArena(); showArenaMenu(); } }]);
+  }
+  try{ if(aPeer) aPeer.destroy(); }catch(e){}
+  aConn = null;
+}
+function onArenaMsg(m){
+  if(!m || typeof m !== "object") return;
+  if(m.t === "hello"){
+    aFoeName = ((m.name || "").trim() || "Gegner").slice(0, 14);
+    if(m.avatar && CARD_BY_ID[m.avatar]) aFoeAvatar = m.avatar;
+    showTeamSelect(true);   // beide wählen jetzt ihr Team
+    say(`⚔️ Duell gegen <b>${aFoeName}</b> — wähle dein Team!`);
+  }
+  else if(m.t === "team"){
+    aFoeTeam = (m.ids || []).filter(id => CARD_BY_ID[id]).slice(0, 6);
+    if(aRole === "host") maybeStartArena();
+  }
+  else if(m.t === "bs" && aRole === "guest") applyBattleState(m.s);
+  else if(m.t === "a" && aRole === "host") applyArenaAction(m);
+}
+function maybeStartArena(){
+  if(aRole === "host" && aMyTeam && aFoeTeam && aFoeTeam.length === 6 && (!bt || bt.over || !bt.net)){
+    startBattleNet(aMyTeam, aFoeTeam);
+  }
+}
+function startBattleNet(myIds, foeIds){
+  const mk = ids => ids.map(id => ({ card: CARD_BY_ID[id], hp: CARD_BY_ID[id].str, max: CARD_BY_ID[id].str, ko: false }));
+  bt = {
+    me:  { units: mk(myIds),  act: 0, energy: 1, kos: 0 },
+    foe: { units: mk(foeIds), act: 0, energy: 1, kos: 0 },
+    turn: Math.random() < 0.5 ? "me" : "foe",
+    over: false, promote: null, net: "host",
+    msg: `⚔️ Duell gegen ${aFoeName} — ${Math.random() < 0.5 ? "möge die stärkere Crew gewinnen!" : "los geht's!"}`,
+  };
+  $("#overlay").classList.remove("show");
+  $("#battle").classList.add("show");
+  battleRender();
+}
+function applyArenaAction(m){
+  if(!bt || bt.net !== "host" || bt.over) return;
+  if(m.k === "atk" && bt.turn === "foe" && !bt.promote) battleAttack("foe", !!m.heavy);
+  else if(m.k === "swap" && bt.turn === "foe" && !bt.promote){
+    const i = m.idx | 0;
+    if(bt.foe.units[i]) battleSwap("foe", i);
+  }
+  else if(m.k === "pro" && bt.promote === "foe"){
+    choosePromoteSide("foe", m.idx | 0);
+  }
+  else sendBattleState();
+}
+function sendBattleState(){
+  if(!bt || !aConn) return;
+  const pk = s => ({ u: s.units.map(u => ({ id: u.card.id, hp: u.hp, ko: u.ko ? 1 : 0 })), act: s.act, en: s.energy, kos: s.kos });
+  aSend({ t:"bs", s:{ me: pk(bt.me), foe: pk(bt.foe), turn: bt.turn, promote: bt.promote, over: !!bt.over, win: bt.winSide || null, msg: bt.msg } });
+}
+function applyBattleState(s){
+  const un = p => ({ units: p.u.map(x => ({ card: CARD_BY_ID[x.id], hp: x.hp, max: CARD_BY_ID[x.id].str, ko: !!x.ko })), act: p.act, energy: p.en, kos: p.kos });
+  const prev = bt;
+  const wasOver = prev && prev.over;
+  bt = {
+    me: un(s.foe), foe: un(s.me),    // Perspektive spiegeln: Host-"foe" = ich
+    turn: s.turn === "foe" ? "me" : "foe",
+    promote: s.promote === "foe" ? "me" : (s.promote === "me" ? "foe" : null),
+    over: !!s.over, net: "guest",
+    msg: s.msg || "",
+  };
+  $("#overlay").classList.remove("show");
+  $("#battle").classList.add("show");
+  battleRender();
+  // Treffer-Effekte aus dem Zustands-Diff
+  if(prev && prev.net === "guest" && !REDUCED){
+    const pMe = prev.me.units[prev.me.act], nMe = bt.me.units[bt.me.act];
+    const pFoe = prev.foe.units[prev.foe.act], nFoe = bt.foe.units[bt.foe.act];
+    if(pMe && nMe && pMe.card.id === nMe.card.id && nMe.hp < pMe.hp) battleFxHit("mine", pMe.hp - nMe.hp, false);
+    if(pFoe && nFoe && pFoe.card.id === nFoe.card.id && nFoe.hp < pFoe.hp) battleFxHit("foe", pFoe.hp - nFoe.hp, false);
+  }
+  if(bt.over && !wasOver){
+    const win = s.win === "foe";   // Host-Sicht: "foe" hat gewonnen = ich (Gast)
+    bt.msg = win ? `🏆 SIEG! Du hast ${aFoeName} bezwungen!` : `💀 Niederlage gegen ${aFoeName} …`;
+    profile.stats.arenaGames++;
+    if(win) profile.stats.arenaWins++;
+    awardBerry(win ? 60 : 25, win ? "Duell-Sieg" : "Duell");
+    sfx(win ? "win" : "lose");
+    battleRender();
+  }
+}
+/* 20-s-Auto-Zug im Duell (Host): niemand kann per AFK blockieren */
+function armBattleTimer(){
+  if(!bt || bt.net !== "host" || bt.over){ battleTimerKey = ""; return; }
+  const key = bt.turn + "|" + (bt.promote || "-") + "|" + bt.me.kos + "|" + bt.foe.kos + "|" + bt.me.energy + "|" + bt.foe.energy;
+  if(key === battleTimerKey) return;
+  battleTimerKey = key;
+  const k = key;
+  setTimeout(() => {
+    if(!bt || bt.net !== "host" || bt.over || k !== battleTimerKey) return;
+    if(bt.promote){
+      const side = bt.promote;
+      let best = -1;
+      bt[side].units.forEach((u, i) => { if(!u.ko && i !== bt[side].act && (best < 0 || u.hp > bt[side].units[best].hp)) best = i; });
+      if(best >= 0) choosePromoteSide(side, best);
+    } else {
+      bt.msg = "⏱ Zeit abgelaufen — automatischer Angriff!";
+      battleAttack(bt.turn, false);
+    }
+  }, ARENA_TURN_MS);
 }
 
 /* ================================================================
@@ -2890,7 +3145,7 @@ function showStartOverlay(){
   $("#overlay").classList.add("show");
   profile.dailyHit = false;
   $("#ovDurak").onclick = showDurakMenu;
-  $("#ovArena").onclick = showTeamSelect;
+  $("#ovArena").onclick = showArenaMenu;
   $("#ovPacks").onclick = showPacks;
   $("#ovCol").onclick = showCollection;
   if(running) $("#ovResume").onclick = () => $("#overlay").classList.remove("show");
