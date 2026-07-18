@@ -187,6 +187,8 @@
     font-size:8.5px; letter-spacing:.12em; color:#3f5d6e; text-transform:uppercase; white-space:nowrap;
   }
   .drag-clone{ box-shadow:0 18px 36px rgba(0,0,0,.7), 0 0 0 2px rgba(212,160,60,.5) !important; }
+  /* Drop-Ziel beim Ziehen einer Verteidigungskarte */
+  .card.droptgt{ box-shadow:0 0 0 3px var(--brass), 0 0 24px rgba(212,160,60,.95) !important; animation:none !important; }
 
   /* Verteidigungskarte tiefer versetzt, damit der Stärke-Badge der Angriffskarte sichtbar bleibt */
   .pair{ position:relative; width:calc(var(--tcard-w) + 16px); height:calc(var(--tcard-h) + 26px); flex:none; }
@@ -535,7 +537,8 @@
       <li>Wische über deinen Kartenfächer, um durchzublättern. Ein Tipp hebt eine Karte an — <b>zieh sie hoch auf den Tisch</b> (Drag &amp; Drop) oder tippe sie erneut, um sie zu spielen. Das <b>ℹ</b> auf der angehobenen Karte zeigt Stärke, Crew &amp; Kämpfe.</li>
       <li>Welche Züge gültig sind, verrät dir das Spiel nicht vorab — selber denken! Nach einem ungültigen Zug erklärt der Schiedsrichter das Warum.</li>
       <li>📡 Kurz rausgetappt oder Verbindung weg? Kein Problem — das Spiel verbindet automatisch neu, sogar nach dem Neuladen der Seite. Mit 😀 schickst du deinen Gegnern Reaktionen, mit ⇅ sortierst du deine Hand nach Crew oder Stärke.</li>
-      <li>⏱ <b>Online gilt: 15 Sekunden pro Zug.</b> Läuft die Zeit ab, wird automatisch gespielt (Verteidiger nimmt auf, Angreifer passt bzw. spielt seine schwächste Karte). Offline-Spieler haben 45 Sekunden — so kann niemand das Spiel durch AFK blockieren.</li>
+      <li>⏱ <b>Online: Zug-Timer</b> (im Raum einstellbar: 15 s / 30 s / Aus). Läuft die Zeit ab, wird automatisch gespielt (Verteidiger nimmt auf, Angreifer passt bzw. spielt seine schwächste Karte). Offline-Spieler haben <b>immer</b> maximal 45 Sekunden — niemand kann das Spiel durch AFK blockieren.</li>
+      <li>🎯 Beim Verteidigen kannst du deine Karte <b>direkt auf einen bestimmten offenen Angriff ziehen</b> — das Ziel leuchtet golden auf. Praktisch, wenn nach dem Schieben mehrere Angriffe offen liegen.</li>
       <li>Kartenbilder: offizielle One-Piece-Sammelkarten (Bandai OPTCG).</li>
     </ul>
   </div>
@@ -980,6 +983,7 @@ let flyHint = null;          // {t:"discard"} | {t:"seat", seat} — Ziel versch
 let raisedId = null;
 let suppressFlipId = null;
 let choiceId = null;     // Karte, für die gerade "Verteidigen oder Schieben?" gefragt wird
+let choiceTargetId = null;
 let sortMode = "crew";   // Hand-Sortierung: "crew" | "str" | "none"
 try{ sortMode = localStorage.getItem("opdurak-sort") || "crew"; }catch(e){}
 function sortedHand(){
@@ -1438,16 +1442,17 @@ function checkGameOver(){
 /* ================================================================
    MENSCHLICHE ZÜGE
    ================================================================ */
-function tapHandCard(card, intent){  // lokale Eingabe dieses Geräts; true = Karte wurde gespielt/gesendet
+function tapHandCard(card, intent, targetId){  // lokale Eingabe dieses Geräts; true = gespielt/gesendet
   const actor = currentActor();
   if(actor !== myId() || isAI(actor) || phase === "resolving") return false;
-  if(isRemote()) return remoteTryPlay(card, intent);
-  return performPlay(card, intent);
+  if(isRemote()) return remoteTryPlay(card, intent, targetId);
+  return performPlay(card, intent, targetId);
 }
 
 /* Führt den Zug wirklich aus — läuft nur lokal bzw. auf dem Online-Host.
-   intent: undefined | "defend" | "shove" (bei mehrdeutigen Verteidiger-Karten) */
-function performPlay(card, intent){
+   intent: undefined | "defend" | "shove" (bei mehrdeutigen Verteidiger-Karten)
+   targetId: per Drag angezielte Angriffskarte (Ziel-Wahl bei mehreren offenen Angriffen) */
+function performPlay(card, intent, targetId){
   if(phase === "attack" || phase === "pile"){
     const w = whoThrows();
     if(!hands[w].some(c => c.id === card.id)) return false;
@@ -1478,15 +1483,16 @@ function performPlay(card, intent){
   if(phase === "defend"){
     const defId = defenderId();
     if(!hands[defId].some(c => c.id === card.id)) return false;
-    // Ziel-Wahl: bevorzugt einen offenen Angriff, den die Karte schlagen KANN (wichtig nach Schieben)
+    // Ziel-Wahl: per Drag angezieltes Ziel > offener Angriff, den die Karte schlagen KANN > erster
     const open = undefendedPairs();
-    const pair = open.find(p => beats(card, p.atk)) || open[0];
+    let pair = targetId ? open.find(p => p.atk.id === targetId) : null;
+    if(!pair) pair = open.find(p => beats(card, p.atk)) || open[0];
     if(!pair) return false;
     const shoveable = canShoveWith(card) && !shoveProblem(card);
     const r = defenseRuling(card, pair.atk);
     // Mehrdeutig (starker Crew-Kamerad): Spieler wählt Verteidigen ODER Schieben
     if(!intent && shoveable && r.ok){
-      choiceId = card.id;
+      choiceId = card.id; choiceTargetId = pair.atk.id;
       say(`<b>${card.name}</b> kann verteidigen ODER die ganze Reihe weiterschieben — wähle unten!`);
       render();
       return false;
@@ -1517,8 +1523,9 @@ function performPlay(card, intent){
 function confirmChoice(intent){
   if(phase !== "defend" || !choiceId) return;
   const card = CARD_BY_ID[choiceId];
-  choiceId = null;
-  if(card) tapHandCard(card, intent);
+  const tgt = choiceTargetId;
+  choiceId = null; choiceTargetId = null;
+  if(card) tapHandCard(card, intent, tgt);
 }
 
 /* Schieben: Verteidiger legt gleich starke Karte dazu und gibt den Angriff weiter */
@@ -1694,7 +1701,8 @@ function aiPileStep(){
    maßgeschneiderten Schnappschuss (nur die eigene Hand ist sichtbar).
    ================================================================ */
 /* ---- Zug-Timer: 15 s pro Entscheidung (online), damit AFK niemanden blockiert ---- */
-const TURN_MS = 15000, OFFLINE_TURN_MS = 45000;
+const OFFLINE_TURN_MS = 45000;
+let timerMode = 15;           // Sekunden pro Zug (online): 15 | 30 | 0 = aus
 let turnDeadline = 0, displayDeadline = 0, lastTurnKey = "", lastTickSecond = -1;
 function armTurnTimer(){
   if(mode !== "online" || role !== "host" || !(phase === "attack" || phase === "defend" || phase === "pile")){
@@ -1705,7 +1713,9 @@ function armTurnTimer(){
   const key = phase + "|" + actor + "|" + table.length + "|" + undefendedPairs().length + "|" + throwIdx;
   if(key === lastTurnKey) return;
   lastTurnKey = key;
-  const ms = offlineSeats[actor] ? OFFLINE_TURN_MS : TURN_MS;
+  // Offline-Grenze gilt IMMER (kein Blockieren); sonst der eingestellte Raum-Timer
+  const ms = offlineSeats[actor] ? OFFLINE_TURN_MS : (timerMode ? timerMode * 1000 : 0);
+  if(!ms){ turnDeadline = 0; displayDeadline = 0; return; }
   turnDeadline = Date.now() + ms;
   displayDeadline = turnDeadline;
   const g = gen, k = key;
@@ -1787,7 +1797,7 @@ function broadcastState(){
 }
 function broadcastLobby(){
   const players = seatsInLobby().map(s => ({ seat: s, name: names[s], avatar: avatars[s] || null }));
-  for(const c of conns) sendTo(c.seat, { t:"lobby", players, deckSize });
+  for(const c of conns) sendTo(c.seat, { t:"lobby", players, deckSize, timer: timerMode });
   if(lobby && !lobby.started) showLobbyHost();
 }
 function seatsInLobby(){ return ["p1", ...conns.map(c => c.seat)]; }
@@ -1927,6 +1937,9 @@ function showLobbyHost(){
      <div class="chiplabel">Kartenstapel</div>
      <div class="chiprow">${DECK_OPTIONS.map(n =>
        `<button class="chip ${n === deckSize ? "sel" : ""}" data-deck="${n}" ${deckOpts.includes(n) ? "" : "disabled"}>${deckLabel(n)}</button>`).join("")}</div>
+     <div class="chiplabel">Zug-Timer</div>
+     <div class="chiprow">${[15, 30, 0].map(n =>
+       `<button class="chip ${n === timerMode ? "sel" : ""}" data-timer="${n}">${n === 0 ? "Aus" : n + " s"}</button>`).join("")}</div>
      <i style="font-size:10.5px;word-break:break-all;color:#7a6234">${link}</i>`,
     [
       { label: players.length >= 2 ? "⚓ Spiel starten (" + players.length + " Spieler)" : "Warte auf Mitspieler …",
@@ -1941,6 +1954,9 @@ function showLobbyHost(){
     ]);
   document.querySelectorAll("[data-deck]").forEach(el => {
     el.onclick = () => { deckSize = parseInt(el.dataset.deck, 10); broadcastLobby(); showLobbyHost(); };
+  });
+  document.querySelectorAll("[data-timer]").forEach(el => {
+    el.onclick = () => { timerMode = parseInt(el.dataset.timer, 10); broadcastLobby(); showLobbyHost(); };
   });
   $("#ovBtns").firstElementChild.id = "lobbyStart";
 }
@@ -2085,10 +2101,11 @@ function onNetMessage(fromSeat, msg){
     else if(msg.t === "lobby"){
       guestLobby = msg;
       deckSize = msg.deckSize;
+      if(typeof msg.timer === "number") timerMode = msg.timer;
       msg.players.forEach(p => { names[p.seat] = p.name; if(p.avatar) avatars[p.seat] = p.avatar; });
       showOverlayBox("🔗", "In der Lobby",
         `<ul class="lobbylist">${msg.players.map(p => `<li>${p.seat === "p1" ? "👑 " : ""}${avatarHTML(p.seat, 22)} ${p.name}${p.seat === mySeat ? " (du)" : ""}</li>`).join("")}</ul>
-         <div style="font-size:12px">Kartenstapel: <b>${deckLabel(msg.deckSize)}</b><br>Der Raum-Ersteller startet das Spiel …</div>`,
+         <div style="font-size:12px">Kartenstapel: <b>${deckLabel(msg.deckSize)}</b> · Zug-Timer: <b>${msg.timer === 0 ? "Aus" : (msg.timer || 15) + " s"}</b><br>Der Raum-Ersteller startet das Spiel …</div>`,
         [{ label:"Verlassen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
     }
     else if(msg.t === "s") applySnapshot(msg.s);
@@ -2101,7 +2118,7 @@ function applyRemoteAction(seat, m){
   if(currentActor() !== seat){ render(); return; }   // nicht dran: frischen Zustand senden
   if(m.a === "play"){
     const card = CARD_BY_ID[m.card];
-    if(card) performPlay(card, m.intent === "shove" || m.intent === "defend" ? m.intent : undefined);
+    if(card) performPlay(card, m.intent === "shove" || m.intent === "defend" ? m.intent : undefined, typeof m.target === "string" ? m.target : undefined);
   } else if(m.a === "take" && phase === "defend"){
     performTake();
   } else if(m.a === "end" && phase === "attack" && allDefended()){
@@ -2111,19 +2128,21 @@ function applyRemoteAction(seat, m){
   }
 }
 /* Gast: Zug lokal vorprüfen (sofortiges Feedback + Auswahl), dann an Host senden */
-function remoteTryPlay(card, intent){
+function remoteTryPlay(card, intent, targetId){
   if(!hands[mySeat].some(c => c.id === card.id)) return false;
   if(phase === "attack" || phase === "pile"){
     const problem = attackProblem(card, phase === "pile");
     if(problem){ say(problem, "bad"); sfx("bad"); return false; }
   } else if(phase === "defend"){
     const open = undefendedPairs();
-    const pair = open.find(p => beats(card, p.atk)) || open[0];
+    let pair = targetId ? open.find(p => p.atk.id === targetId) : null;
+    if(!pair) pair = open.find(p => beats(card, p.atk)) || open[0];
     if(!pair) return false;
+    targetId = pair.atk.id;
     const shoveable = canShoveWith(card) && !shoveProblem(card);
     const r = defenseRuling(card, pair.atk);
     if(!intent && shoveable && r.ok){
-      choiceId = card.id;
+      choiceId = card.id; choiceTargetId = pair.atk.id;
       say(`<b>${card.name}</b> kann verteidigen ODER die ganze Reihe weiterschieben — wähle unten!`);
       render();
       return false;
@@ -2140,7 +2159,7 @@ function remoteTryPlay(card, intent){
       say(txt, "bad"); sfx("bad"); return false;
     } else intent = "defend";
   } else return false;
-  send({ t:"a", a:"play", card: card.id, intent });
+  send({ t:"a", a:"play", card: card.id, intent, target: targetId || null });
   raisedId = null; choiceId = null;
   sfx("play");
   return true;
@@ -2225,7 +2244,7 @@ function persistHost(){
   if(mode !== "online" || role !== "host" || !lobby || !lobby.started) return;
   try{
     sessionStorage.setItem("opdurak-host", JSON.stringify({
-      code: lobby.code, deckSize, seats, tokens, roomDuraks, finishOrder,
+      code: lobby.code, deckSize, timerMode, seats, tokens, roomDuraks, finishOrder,
       avatars: { ...avatars },
       names: Object.fromEntries(seats.map(s => [s, names[s]])),
       state: {
@@ -2253,6 +2272,7 @@ function resumeHostRoom(saved){
   role = "host"; mySeat = "p1"; viewer = "p1"; mode = "online";
   myRoomCode = saved.code;
   deckSize = saved.deckSize; seats = saved.seats; tokens = saved.tokens || {};
+  if(typeof saved.timerMode === "number") timerMode = saved.timerMode;
   roomDuraks = saved.roomDuraks || {}; finishOrder = saved.finishOrder || [];
   avatars = saved.avatars || {};
   Object.assign(names, saved.names || {});
@@ -2485,11 +2505,25 @@ function startDrag(e){
   gesture.grabX = e.clientX - r.left; gesture.grabY = e.clientY - r.top;
   moveDrag(e);
 }
+function dropTargetAt(x, y){
+  let best = null;
+  document.querySelectorAll("#table .card.atk.open").forEach(el => {
+    const r = el.getBoundingClientRect();
+    if(x >= r.left - 10 && x <= r.right + 10 && y >= r.top - 10 && y <= r.bottom + 10) best = el;
+  });
+  return best;
+}
+function clearDropHighlights(){
+  document.querySelectorAll(".droptgt").forEach(el => el.classList.remove("droptgt"));
+}
 function moveDrag(e){
   const c = gesture && gesture.cloneEl; if(!c) return;
   c.style.left = (e.clientX - gesture.grabX) + "px";
   c.style.top  = (e.clientY - gesture.grabY) + "px";
   c.style.transform = "rotate(3deg) scale(1.04)";
+  // Ziel-Highlight: über welcher offenen Angriffskarte schwebt die Karte?
+  const tgt = phase === "defend" ? dropTargetAt(e.clientX, e.clientY) : null;
+  document.querySelectorAll("#table .card.atk").forEach(el => el.classList.toggle("droptgt", el === tgt));
 }
 function endDrag(g, e){
   const clone = g.cloneEl, orig = g.origEl;
@@ -2498,10 +2532,16 @@ function endDrag(g, e){
   const handTop = handWrap.getBoundingClientRect().top;
   let played = false;
   if(e.clientY < handTop + 12){
+    let targetId;
+    if(phase === "defend"){
+      const tgt = dropTargetAt(e.clientX, e.clientY);
+      if(tgt) targetId = tgt.dataset.id;
+    }
     suppressFlipId = card.id;
-    played = tapHandCard(card) === true;
+    played = tapHandCard(card, undefined, targetId) === true;
     if(!played) suppressFlipId = null;
   }
+  clearDropHighlights();
   if(played){
     const target = document.querySelector(`#table .card[data-id="${card.id}"]`);
     if(target && !REDUCED){
@@ -2536,6 +2576,7 @@ function endDrag(g, e){
 function cancelDrag(g){
   if(g && g.cloneEl) g.cloneEl.remove();
   if(g && g.origEl) g.origEl.style.visibility = "";
+  clearDropHighlights();
 }
 
 handWrap.addEventListener("pointerdown", e => {
