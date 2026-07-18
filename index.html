@@ -188,9 +188,10 @@
   }
   .drag-clone{ box-shadow:0 18px 36px rgba(0,0,0,.7), 0 0 0 2px rgba(212,160,60,.5) !important; }
 
-  .pair{ position:relative; width:calc(var(--tcard-w) + 16px); height:calc(var(--tcard-h) + 18px); flex:none; }
+  /* Verteidigungskarte tiefer versetzt, damit der Stärke-Badge der Angriffskarte sichtbar bleibt */
+  .pair{ position:relative; width:calc(var(--tcard-w) + 16px); height:calc(var(--tcard-h) + 26px); flex:none; }
   .pair .card.atk{ position:absolute; top:0; left:0; }
-  .pair .card.def{ position:absolute; top:14px; left:13px; transform:rotate(7deg); }
+  .pair .card.def{ position:absolute; top:23px; left:14px; transform:rotate(7deg); }
   .pair .card.atk.open{ box-shadow:0 0 0 2px var(--seal), 0 0 16px rgba(194,59,46,.6); animation:pulse 1.2s ease-in-out infinite; }
   @keyframes pulse{ 50%{ box-shadow:0 0 0 2px var(--seal), 0 0 26px rgba(194,59,46,.9);} }
   .impact{
@@ -260,6 +261,47 @@
     transform:scale(.35); transition:transform .25s cubic-bezier(.2,1.7,.4,1);
   }
   #legendFX.show .lname{ transform:scale(1); }
+
+  /* Runden-Stempel: ABGEWEHRT! / AUFGENOMMEN! */
+  #stampFX{
+    position:fixed; inset:0; z-index:68; pointer-events:none;
+    display:grid; place-items:center; opacity:0; transition:opacity .15s ease;
+  }
+  #stampFX.show{ opacity:1; }
+  #stampFX .stamp{
+    font-family:Georgia, serif; font-size:30px; font-weight:900; letter-spacing:.12em;
+    padding:10px 26px; border:4px solid; border-radius:12px; transform:rotate(-8deg) scale(.4);
+    transition:transform .22s cubic-bezier(.2,1.7,.4,1);
+    background:rgba(10,18,26,.72); text-transform:uppercase;
+  }
+  #stampFX.show .stamp{ transform:rotate(-8deg) scale(1); }
+  #stampFX.good .stamp{ color:#7fe0a4; border-color:#4e9a67; text-shadow:0 0 18px rgba(78,154,103,.8); }
+  #stampFX.bad .stamp{ color:#ff9d92; border-color:var(--seal); text-shadow:0 0 18px rgba(194,59,46,.8); }
+
+  /* Zug-Timer */
+  #turnTimerWrap{ height:0; display:flex; justify-content:center; position:relative; z-index:25; }
+  #turnTimer{
+    display:none; margin-top:4px; padding:2px 12px; border-radius:99px;
+    background:var(--sea-3); border:1px solid #2c4657; color:var(--foam);
+    font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;
+  }
+  #turnTimer.show{ display:inline-block; }
+  #turnTimer.mine{ border-color:var(--brass); color:#ffe9b0; }
+  #turnTimer.low{ border-color:var(--seal); color:#ff9d92; animation:timerpulse .9s infinite; }
+  @keyframes timerpulse{ 50%{ transform:scale(1.12); } }
+
+  /* Aktions-Button pulsiert, wenn du dran bist */
+  .abtn.pulse{ animation:btnpulse 1.7s ease-in-out infinite; }
+  @keyframes btnpulse{ 50%{ box-shadow:0 3px 0 rgba(0,0,0,.35), 0 0 18px rgba(212,160,60,.55); } }
+
+  /* Sortier-Button (links, Gegenstück zum Emote-Button) */
+  #sortBtn{
+    position:fixed; left:max(10px, calc(50vw - 250px));
+    bottom:calc(env(safe-area-inset-bottom) + 210px);
+    width:42px; height:42px; border-radius:50%; z-index:35;
+    background:var(--sea-3); border:1px solid #2c4657; font-size:18px; line-height:1;
+    box-shadow:0 3px 8px rgba(0,0,0,.4); color:var(--foam);
+  }
   .c-info{
     position:absolute; top:3px; right:3px; z-index:3;
     width:26px; height:26px; border-radius:50%;
@@ -426,6 +468,7 @@
   <section id="opp" aria-label="Gegenspieler"><div id="oppRow"></div></section>
 
   <div id="banner"></div>
+  <div id="turnTimerWrap"><span id="turnTimer"></span></div>
   <section id="table" aria-label="Tisch"></section>
 
   <div id="ref"><span class="icon">⚖️</span><span id="refText">Willkommen an Bord!</span></div>
@@ -437,7 +480,9 @@
 
 <div id="flyLayer"></div>
 <div id="legendFX"><div class="lname"></div></div>
+<div id="stampFX"><div class="stamp"></div></div>
 <button id="emoteBtn" aria-label="Reaktion senden">😀</button>
+<button id="sortBtn" aria-label="Hand sortieren">⇅</button>
 <div id="emotePop"></div>
 
 <!-- Regeln -->
@@ -489,7 +534,8 @@
       <li>🌐 <b>Online (2–6 Spieler)</b>: Raum erstellen, Code/Link an die Crew schicken, losspielen — jeder auf seinem Handy, mit eigenem Avatar. 👥 Alternativ 2–6 Spieler an einem Gerät (Sichtschutz beim Weitergeben).</li>
       <li>Wische über deinen Kartenfächer, um durchzublättern. Ein Tipp hebt eine Karte an — <b>zieh sie hoch auf den Tisch</b> (Drag &amp; Drop) oder tippe sie erneut, um sie zu spielen. Das <b>ℹ</b> auf der angehobenen Karte zeigt Stärke, Crew &amp; Kämpfe.</li>
       <li>Welche Züge gültig sind, verrät dir das Spiel nicht vorab — selber denken! Nach einem ungültigen Zug erklärt der Schiedsrichter das Warum.</li>
-      <li>📡 Kurz rausgetappt oder Verbindung weg? Kein Problem — das Spiel <b>wartet</b> und verbindet automatisch neu, sogar nach dem Neuladen der Seite. Mit 😀 schickst du deinen Gegnern Reaktionen.</li>
+      <li>📡 Kurz rausgetappt oder Verbindung weg? Kein Problem — das Spiel verbindet automatisch neu, sogar nach dem Neuladen der Seite. Mit 😀 schickst du deinen Gegnern Reaktionen, mit ⇅ sortierst du deine Hand nach Crew oder Stärke.</li>
+      <li>⏱ <b>Online gilt: 15 Sekunden pro Zug.</b> Läuft die Zeit ab, wird automatisch gespielt (Verteidiger nimmt auf, Angreifer passt bzw. spielt seine schwächste Karte). Offline-Spieler haben 45 Sekunden — so kann niemand das Spiel durch AFK blockieren.</li>
       <li>Kartenbilder: offizielle One-Piece-Sammelkarten (Bandai OPTCG).</li>
     </ul>
   </div>
@@ -918,6 +964,7 @@ function sfx(name){
     else if(name === "shove"){ noiseBurst(ctx, t, .18, 500, 1800, .16); }
     else if(name === "dran"){ tone(ctx, t, 660, .1, .09, "triangle"); tone(ctx, t + .12, 880, .16, .09, "triangle"); }
     else if(name === "boom"){ tone(ctx, t, 68, .55, .2, "sawtooth"); noiseBurst(ctx, t, .4, 320, 60, .16); buzz([25, 30, 70]); }
+    else if(name === "tick"){ tone(ctx, t, 1250, .05, .05, "square"); }
     else if(name === "win")   [523, 659, 784, 1047].forEach((f, i) => tone(ctx, t + i * .12, f, .22, .1, "triangle"));
     else if(name === "lose")  [392, 330, 262].forEach((f, i) => tone(ctx, t + i * .16, f, .3, .08, "sawtooth"));
   }catch(e){}
@@ -933,6 +980,14 @@ let flyHint = null;          // {t:"discard"} | {t:"seat", seat} — Ziel versch
 let raisedId = null;
 let suppressFlipId = null;
 let choiceId = null;     // Karte, für die gerade "Verteidigen oder Schieben?" gefragt wird
+let sortMode = "crew";   // Hand-Sortierung: "crew" | "str" | "none"
+try{ sortMode = localStorage.getItem("opdurak-sort") || "crew"; }catch(e){}
+function sortedHand(){
+  const h = hands[viewer].filter(Boolean).slice();
+  if(sortMode === "str") h.sort((a, b) => a.str - b.str);
+  else if(sortMode === "crew") h.sort((a, b) => a.crew === b.crew ? a.str - b.str : (CREWS[a.crew].name < CREWS[b.crew].name ? -1 : 1));
+  return h;
+}
 
 function pileStackHTML(count, messy){
   const k = count === 0 ? 0 : Math.min(3, Math.max(1, Math.ceil(count / 18)));
@@ -963,7 +1018,7 @@ function cardHTML(card, cls, extra){
 }
 
 function render(){
-  if(mode === "online" && role === "host") broadcastState();
+  if(mode === "online" && role === "host"){ armTurnTimer(); broadcastState(); }
 
   // Gegenspieler (alle außer dem Viewer, in Zugreihenfolge ab Viewer)
   const vi = seats.indexOf(viewer);
@@ -1012,7 +1067,7 @@ function render(){
   const actorIsViewer = currentActor() === viewer && !isAI(viewer) && phase !== "resolving" && currentActor() === myId();
   if(raisedId && !hands[viewer].some(c => c && c.id === raisedId)) raisedId = null;
   if(phase !== "defend") choiceId = null;
-  $("#hand").innerHTML = hands[viewer].filter(Boolean).map(c =>
+  $("#hand").innerHTML = sortedHand().map(c =>
     cardHTML(c, "", `<button class="c-info" data-info="${c.id}" aria-label="Details zu ${c.name}">i</button>`)
   ).join("");
   layoutFan();
@@ -1029,7 +1084,7 @@ function render(){
       a.innerHTML = `<div id="hint">Wähle eine Karte für den Angriff … (erste Karte: freie Wahl)</div>`;
     } else {
       const label = whoThrows() === attacker ? "Angriff beenden ✓" : "Passen ✓";
-      a.innerHTML = `<button class="abtn end" id="btnEnd" ${allDefended() ? "" : "disabled"}>${label}</button>`;
+      a.innerHTML = `<button class="abtn end pulse" id="btnEnd" ${allDefended() ? "" : "disabled"}>${label}</button>`;
     }
   } else if(phase === "defend"){
     if(choiceId && hands[viewer].some(c => c && c.id === choiceId)){
@@ -1037,10 +1092,10 @@ function render(){
         <button class="abtn done" id="btnShove">🔁 Schieben</button>
         <button class="abtn take" id="btnTake" style="flex:.5">🖐</button>`;
     } else {
-      a.innerHTML = `<button class="abtn take" id="btnTake">Aufnehmen 🖐</button>`;
+      a.innerHTML = `<button class="abtn take pulse" id="btnTake">Aufnehmen 🖐</button>`;
     }
   } else if(phase === "pile"){
-    a.innerHTML = `<button class="abtn done" id="btnPile">Fertig — ${Nm(defenderId())} nimmt auf</button>`;
+    a.innerHTML = `<button class="abtn done pulse" id="btnPile">Fertig — ${Nm(defenderId())} nimmt auf</button>`;
   } else {
     a.innerHTML = `<div id="hint"></div>`;
   }
@@ -1063,9 +1118,12 @@ function layoutFan(){
   if(!n) return;
   const W = $("#hand").clientWidth;
   const cw = cards[0].offsetWidth || 100;
-  const step = n > 1 ? Math.min(cw * 0.6, (W - cw) / (n - 1)) : 0;
+  // Seitlicher Sicherheitsrand: die Fächer-Rotation schwenkt Randkarten nach außen —
+  // ohne Inset ragt die linke/rechte Karte (samt Stärke-Badge) aus dem Bild.
+  const M = Math.max(16, Math.round(cw * 0.24));
+  const step = n > 1 ? Math.min(cw * 0.6, (W - cw - 2 * M) / (n - 1)) : 0;
   const total = step * (n - 1) + cw;
-  const x0 = Math.max(0, (W - total) / 2);
+  const x0 = Math.max(M, (W - total) / 2);
   const mid = (n - 1) / 2;
   const rotUnit = n > 1 ? Math.min(3.5, 22 / (n - 1)) : 0;
   cards.forEach((el, i) => {
@@ -1269,6 +1327,18 @@ function playDefenseCard(who, card, pair){
   pair.def = card; pair.justDef = true;
   if(card.str >= 94) legendFX(card);
 }
+/* Runden-Stempel: ABGEWEHRT! / AUFGENOMMEN! */
+let stampTimer = null;
+function roundStamp(text, good){
+  if(REDUCED) return;
+  const el = $("#stampFX");
+  if(!el || !el.querySelector) return;
+  el.querySelector(".stamp").textContent = text;
+  el.className = "show " + (good ? "good" : "bad");
+  if(stampTimer) clearTimeout(stampTimer);
+  stampTimer = setTimeout(() => { el.className = ""; }, 950);
+}
+
 /* Vollbild-Einblendung beim Ausspielen einer Legende */
 let legendTimer = null;
 function legendFX(card){
@@ -1288,10 +1358,12 @@ function finishRound(result){
   if(result === "defended"){
     discard.push(...cards);
     flyHint = { t:"discard" };
+    roundStamp("Abgewehrt!", true);
     ruling(`Alle Angriffe abgewehrt! ${cards.length} Karten kommen ab — ${nm(defId)} ${isYou(defId) ? "wirst" : "wird"} jetzt Angreifer.`, "good");
   } else {
     hands[defId].push(...cards);
     flyHint = defId === viewer ? null : { t:"seat", seat: defId };
+    roundStamp("Aufgenommen!", false);
     const skipInfo = seats.filter(s => !finished[s]).length > 2 ? " und wird übersprungen" : "";
     ruling(`${Nm(defId)} ${isYou(defId) ? "nimmst" : "nimmt"} ${cards.length} Karte${cards.length === 1 ? "" : "n"} auf${skipInfo}.`, "bad");
   }
@@ -1406,7 +1478,9 @@ function performPlay(card, intent){
   if(phase === "defend"){
     const defId = defenderId();
     if(!hands[defId].some(c => c.id === card.id)) return false;
-    const pair = undefendedPairs()[0];
+    // Ziel-Wahl: bevorzugt einen offenen Angriff, den die Karte schlagen KANN (wichtig nach Schieben)
+    const open = undefendedPairs();
+    const pair = open.find(p => beats(card, p.atk)) || open[0];
     if(!pair) return false;
     const shoveable = canShoveWith(card) && !shoveProblem(card);
     const r = defenseRuling(card, pair.atk);
@@ -1619,6 +1693,46 @@ function aiPileStep(){
    Host = p1 führt die Spiellogik aus und sendet jedem Gast einen
    maßgeschneiderten Schnappschuss (nur die eigene Hand ist sichtbar).
    ================================================================ */
+/* ---- Zug-Timer: 15 s pro Entscheidung (online), damit AFK niemanden blockiert ---- */
+const TURN_MS = 15000, OFFLINE_TURN_MS = 45000;
+let turnDeadline = 0, displayDeadline = 0, lastTurnKey = "", lastTickSecond = -1;
+function armTurnTimer(){
+  if(mode !== "online" || role !== "host" || !(phase === "attack" || phase === "defend" || phase === "pile")){
+    turnDeadline = 0; displayDeadline = 0; lastTurnKey = "";
+    return;
+  }
+  const actor = currentActor();
+  const key = phase + "|" + actor + "|" + table.length + "|" + undefendedPairs().length + "|" + throwIdx;
+  if(key === lastTurnKey) return;
+  lastTurnKey = key;
+  const ms = offlineSeats[actor] ? OFFLINE_TURN_MS : TURN_MS;
+  turnDeadline = Date.now() + ms;
+  displayDeadline = turnDeadline;
+  const g = gen, k = key;
+  setTimeout(() => {
+    if(g === gen && k === lastTurnKey && mode === "online" && role === "host" && phase !== "over") turnExpired();
+  }, ms + 100);
+}
+function turnExpired(){
+  const actor = currentActor();
+  addLog("⏱", `Zeit abgelaufen für ${Nm(actor)}.`);
+  if(phase === "defend"){
+    say(`⏱ Zeit abgelaufen — ${Nm(actor)} nimmt automatisch auf.`, "bad");
+    performTake();
+  } else if(phase === "attack"){
+    if(table.length === 0){
+      const low = hands[actor].slice().sort((a, b) => a.str - b.str)[0];
+      if(low){ say(`⏱ Zeit abgelaufen — ${Nm(actor)} spielt automatisch <b>${low.name}</b>.`, "bad"); performPlay(low); }
+      else passTurn();
+    } else if(allDefended()){
+      say(`⏱ Zeit abgelaufen — ${Nm(actor)} passt automatisch.`, "bad");
+      passTurn();
+    }
+  } else if(phase === "pile"){
+    passTurn();
+  }
+}
+
 let role = null;              // "host" | "guest"
 let mySeat = "p1";
 let peer = null;
@@ -1761,6 +1875,7 @@ function wireHostConn(c){
         if(old >= 0){ try{ conns[old].conn.close(); }catch(e){} conns.splice(old, 1); }
         conns.push({ conn: c, seat: rs.seat });
         delete offlineSeats[rs.seat];
+        lastTurnKey = "";   // Rückkehrer bekommt eine frische Zug-Zeit
         if(msg.name) names[rs.seat] = msg.name.trim().slice(0, 14) || names[rs.seat];
         if(msg.avatar && CARD_BY_ID[msg.avatar]) avatars[rs.seat] = msg.avatar;
         sendTo(rs.seat, { t:"welcome", seat: rs.seat, token: rs.token });
@@ -1793,9 +1908,10 @@ function onHostConnClosed(c){
   conns.splice(i, 1);
   if(lobby && !lobby.started){ delete tokens[seat]; broadcastLobby(); showLobbyHost(); return; }
   if(phase === "over") return;
-  // Spiel läuft: Sitz behalten, auf Rückkehr warten (kein Abbruch!)
+  // Spiel läuft: Sitz behalten, auf Rückkehr warten — aber max. 45 s pro Zug (kein Blockieren!)
   offlineSeats[seat] = true;
-  ruling(`📴 ${Nm(seat)} hat gerade keine Verbindung — das Spiel wartet. (Er/sie kann einfach zurückkommen, sogar nach Neuladen der Seite.)`, "bad");
+  lastTurnKey = "";   // Zug-Timer des Offline-Spielers auf 45 s umstellen
+  ruling(`📴 ${Nm(seat)} hat gerade keine Verbindung — Züge laufen nach 45 s automatisch ab. (Zurückkommen geht jederzeit, sogar nach Neuladen.)`, "bad");
   render();
 }
 function showLobbyHost(){
@@ -2001,7 +2117,8 @@ function remoteTryPlay(card, intent){
     const problem = attackProblem(card, phase === "pile");
     if(problem){ say(problem, "bad"); sfx("bad"); return false; }
   } else if(phase === "defend"){
-    const pair = undefendedPairs()[0];
+    const open = undefendedPairs();
+    const pair = open.find(p => beats(card, p.atk)) || open[0];
     if(!pair) return false;
     const shoveable = canShoveWith(card) && !shoveProblem(card);
     const r = defenseRuling(card, pair.atk);
@@ -2040,6 +2157,7 @@ function snapshotFor(seat){
     table: table.map(p => ({ a: p.atk.id, d: p.def ? p.def.id : null, jd: p.justDef ? 1 : 0 })),
     attacker, maxAttacks, phase,
     thrower: whoThrows(),
+    remain: turnDeadline ? Math.max(0, turnDeadline - Date.now()) : 0,
     offline: { ...offlineSeats },
     avatars: { ...avatars },
     ref: lastSay,
@@ -2063,6 +2181,7 @@ function applySnapshot(s){
   table = s.table.map(p => ({ atk: CARD_BY_ID[p.a], def: p.d ? CARD_BY_ID[p.d] : null, justDef: !!p.jd }));
   attacker = s.attacker; maxAttacks = s.maxAttacks; phase = s.phase;
   throwOrder = [s.thrower || s.attacker]; throwIdx = 0;   // Gast braucht nur den aktuellen Werfer
+  displayDeadline = s.remain ? Date.now() + s.remain : 0;
   offlineSeats = s.offline || {};
   avatars = s.avatars || avatars;
   if(s.ref && (!prevSnap || !prevSnap.ref || prevSnap.ref.html !== s.ref.html)) say(s.ref.html, s.ref.mood);
@@ -2085,7 +2204,11 @@ function guestSounds(a, b){
   const defs = t => t.reduce((n, p) => n + (p.d ? 1 : 0), 0);
   if(b.table.length > a.table.length) sfx("play");
   else if(defs(b.table) > defs(a.table)) sfx("slam");
-  else if(a.table.length > 0 && b.table.length === 0) sfx("take");
+  else if(a.table.length > 0 && b.table.length === 0){
+    sfx("take");
+    if(b.discard > a.discard) roundStamp("Abgewehrt!", true);
+    else roundStamp("Aufgenommen!", false);
+  }
   if(b.over && !a.over) sfx(b.over.result !== "draw" && b.over.result === mySeat ? "lose" : "win");
   // Legenden-Effekt für neu aufgetauchte Tischkarten
   const prevIds = new Set(a.table.flatMap(p => [p.a, p.d]).filter(Boolean));
@@ -2476,6 +2599,30 @@ window.addEventListener("beforeunload", e => {
 });
 if(ONLINE && typeof navigator !== "undefined" && "serviceWorker" in navigator){
   try{ navigator.serviceWorker.register("./sw.js"); }catch(e){}
+}
+
+$("#sortBtn").addEventListener("click", () => {
+  sortMode = sortMode === "crew" ? "str" : (sortMode === "str" ? "none" : "crew");
+  try{ localStorage.setItem("opdurak-sort", sortMode); }catch(e){}
+  say(sortMode === "crew" ? "⇅ Hand sortiert nach <b>Crew</b>."
+    : sortMode === "str" ? "⇅ Hand sortiert nach <b>Stärke</b>."
+    : "⇅ Hand unsortiert (wie gezogen).");
+  render();
+});
+
+/* Zug-Timer-Anzeige (tickt lokal, Host & Gäste) */
+if(ONLINE){
+  setInterval(() => {
+    const el = $("#turnTimer");
+    if(!el) return;
+    const active = mode === "online" && displayDeadline > 0 && (phase === "attack" || phase === "defend" || phase === "pile");
+    if(!active){ el.className = ""; el.textContent = ""; return; }
+    const s = Math.max(0, Math.ceil((displayDeadline - Date.now()) / 1000));
+    const mine = currentActor() === myId();
+    el.textContent = "⏱ " + s + " s";
+    el.className = "show" + (s <= 5 ? " low" : "") + (mine ? " mine" : "");
+    if(mine && s <= 5 && s > 0 && s !== lastTickSecond){ lastTickSecond = s; sfx("tick"); }
+  }, 300);
 }
 
 function updateSoundBtn(){ $("#btnSound").textContent = soundOn ? "🔊" : "🔇"; }
