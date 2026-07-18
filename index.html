@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0e1a23">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏴</text></svg>">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 <title>One-Piece-Durak</title>
@@ -85,6 +89,41 @@
     font-size:10.5px; color:var(--foam-dim); font-variant-numeric:tabular-nums;
   }
   .oppbox .donetag{ font-size:10px; color:var(--jade); font-weight:700; }
+  .oppbox.off{ border-style:dashed; border-color:#7a4a3a; }
+
+  /* ============ Emotes ============ */
+  #emoteBtn{
+    position:fixed; right:max(10px, calc(50vw - 250px));
+    bottom:calc(env(safe-area-inset-bottom) + 210px);
+    width:42px; height:42px; border-radius:50%; z-index:35;
+    background:var(--sea-3); border:1px solid #2c4657; font-size:20px; line-height:1;
+    box-shadow:0 3px 8px rgba(0,0,0,.4); display:none;
+  }
+  #emoteBtn.show{ display:block; }
+  #emotePop{
+    position:fixed; right:max(10px, calc(50vw - 250px));
+    bottom:calc(env(safe-area-inset-bottom) + 258px);
+    background:var(--sea-2); border:1px solid #2c4657; border-radius:14px;
+    padding:8px; z-index:36; display:none; gap:4px;
+    box-shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  #emotePop.show{ display:flex; }
+  #emotePop button{
+    background:none; border:none; font-size:24px; padding:5px; border-radius:8px;
+  }
+  #emotePop button:active{ background:var(--sea-3); }
+  .emote-bubble{
+    position:fixed; z-index:65; font-size:34px; pointer-events:none;
+    filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));
+    animation:emoteFloat 2.1s ease-out forwards;
+  }
+  @keyframes emoteFloat{
+    0%{ transform:translateY(8px) scale(.4); opacity:0; }
+    15%{ transform:translateY(0) scale(1.15); opacity:1; }
+    30%{ transform:scale(1); }
+    80%{ opacity:1; }
+    100%{ transform:translateY(-34px) scale(.9); opacity:0; }
+  }
 
   /* ============ Rollen-Banner ============ */
   #banner{
@@ -357,6 +396,8 @@
 </div>
 
 <div id="flyLayer"></div>
+<button id="emoteBtn" aria-label="Reaktion senden">😀</button>
+<div id="emotePop"></div>
 
 <!-- Regeln -->
 <div class="modal" id="rulesModal">
@@ -408,6 +449,7 @@
       <li>🌐 <b>Online (2–4 Spieler)</b>: Raum erstellen, Code/Link an die Crew schicken, losspielen — jeder auf seinem Handy. 👥 Alternativ 2–4 Spieler an einem Gerät (Sichtschutz beim Weitergeben).</li>
       <li>Wische über deinen Kartenfächer, um durchzublättern. Ein Tipp hebt eine Karte an — <b>zieh sie hoch auf den Tisch</b> (Drag &amp; Drop) oder tippe sie erneut, um sie zu spielen. Das <b>ℹ</b> auf der angehobenen Karte zeigt Stärke, Crew &amp; Kämpfe.</li>
       <li>Welche Züge gültig sind, verrät dir das Spiel nicht vorab — selber denken! Nach einem ungültigen Zug erklärt der Schiedsrichter das Warum.</li>
+      <li>📡 Kurz rausgetappt oder Verbindung weg? Kein Problem — das Spiel <b>wartet</b> und verbindet automatisch neu, sogar nach dem Neuladen der Seite. Mit 😀 schickst du deinen Gegnern Reaktionen.</li>
       <li>Kartenbilder: offizielle One-Piece-Sammelkarten (Bandai OPTCG).</li>
     </ul>
   </div>
@@ -600,7 +642,8 @@ let viewer = "p1";            // wessen Hand unten angezeigt wird
 let gen = 0;                  // Generation: entwertet alte Timeouts nach Neustart
 let logEntries = [];
 let lastSay = { html:"", mood:"" };
-let lastOver = null;          // {icon,title,text,result:"draw"|seat-des-Durak}
+let lastOver = null;          // {icon,title,text,result:"draw"|seat-des-Durak,ranking,duraks}
+let finishOrder = [];         // Sitze in der Reihenfolge, in der sie fertig wurden
 let score = { ai:{p1:0,p2:0,draw:0} };
 
 try{
@@ -769,6 +812,7 @@ function sfx(name){
     else if(name === "take")  noiseBurst(ctx, t, .3, 700, 150, .14);
     else if(name === "bad")   tone(ctx, t, 140, .12, .06, "square");
     else if(name === "shove"){ noiseBurst(ctx, t, .18, 500, 1800, .16); }
+    else if(name === "dran"){ tone(ctx, t, 660, .1, .09, "triangle"); tone(ctx, t + .12, 880, .16, .09, "triangle"); }
     else if(name === "win")   [523, 659, 784, 1047].forEach((f, i) => tone(ctx, t + i * .12, f, .22, .1, "triangle"));
     else if(name === "lose")  [392, 330, 262].forEach((f, i) => tone(ctx, t + i * .16, f, .3, .08, "sawtooth"));
   }catch(e){}
@@ -822,13 +866,19 @@ function render(){
   $("#oppRow").innerHTML = opps.map(s => {
     const n = hands[s].length;
     const shown = Math.min(n, 6);
+    const off = mode === "online" && offlineSeats[s];
     const roleIcon = phase === "over" ? "" : (s === attacker ? "⚔ " : (s === defId ? "🛡 " : ""));
-    return `<div class="oppbox ${s === attacker ? "atk" : ""} ${s === defId ? "def" : ""} ${finished[s] ? "done" : ""}" data-seat="${s}">
-      <div class="oppname"><span class="role">${roleIcon}</span>${Nm(s)}</div>
+    return `<div class="oppbox ${s === attacker ? "atk" : ""} ${s === defId ? "def" : ""} ${finished[s] ? "done" : ""} ${off ? "off" : ""}" data-seat="${s}">
+      <div class="oppname"><span class="role">${off ? "📴 " : roleIcon}</span>${Nm(s)}</div>
       <div class="minifan">${Array.from({length:shown}, () => `<div class="back"></div>`).join("")}</div>
       ${finished[s] ? `<div class="donetag">Fertig ✓</div>` : `<div class="oppcount">${n} Karten</div>`}
     </div>`;
   }).join("");
+
+  // "Du bist dran"-Signal (online): Ton + Vibration, wenn der Zug zu mir wechselt
+  const mineNow = phase !== "over" && (phase === "attack" || phase === "defend" || phase === "pile") && currentActor() === myId();
+  if(mode === "online" && mineNow && !wasMyTurn){ sfx("dran"); buzz(30); }
+  wasMyTurn = mineNow;
 
   // Banner
   const b = $("#banner");
@@ -877,6 +927,8 @@ function render(){
   } else {
     a.innerHTML = `<div id="hint"></div>`;
   }
+
+  $("#emoteBtn").className = mode === "online" && phase !== "idle" ? "show" : "";
 
   animateTransitions();
   table.forEach(p => { p.justDef = false; });
@@ -1039,7 +1091,7 @@ function newGame(selectedMode, opts){
   hands = { p1:[], p2:[], p3:[], p4:[] };
   finished = {};
   lastRects = {}; lastViewer = null; flyHint = null; raisedId = null;
-  lastOver = null; overShown = false; prevSnaps = {};
+  lastOver = null; overShown = false; prevSnaps = {}; finishOrder = [];
   for(let i = 0; i < HAND_SIZE; i++) for(const s of seats) hands[s].push(deck.pop());
   attacker = seats[Math.floor(Math.random() * seats.length)];
   // Hot-Seat: Viewer bewusst NICHT auf den Angreifer setzen, damit handoff()
@@ -1109,6 +1161,7 @@ function finishRound(result){
     for(const s of seats){
       if(!hands[s].length && !finished[s]){
         finished[s] = true;
+        finishOrder.push(s);
         addLog("🎉", `${Nm(s)} ist alle Karten los und aus dem Spiel!`);
       }
     }
@@ -1146,7 +1199,21 @@ function checkGameOver(){
     else sc.p1++;
     try{ localStorage.setItem("opdurak-score-v3", JSON.stringify(score)); }catch(e){}
   }
-  lastOver = { icon, title, text, result };
+  // Platzierung (bei 3-4 Spielern) + Durak-Bilanz über Revanchen (online)
+  let ranking = null;
+  if(seats.length > 2){
+    const medals = ["🥇","🥈","🥉"];
+    const order = [...finishOrder, ...(result !== "draw" ? [result] : [])];
+    ranking = order.map((s, i) => `${i === order.length - 1 && result !== "draw" ? "💀" : (medals[i] || "·")} ${Nm(s)}`);
+    text += `<br><br>${ranking.join("<br>")}`;
+  }
+  if(mode === "online" && role === "host" && result !== "draw"){
+    roomDuraks[result] = (roomDuraks[result] || 0) + 1;
+  }
+  const duraksLine = (mode === "online" && Object.keys(roomDuraks).length)
+    ? "Durak-Bilanz: " + seats.map(s => `${Nm(s)} ${roomDuraks[s] || 0}`).join(" · ") : "";
+  if(duraksLine) text += `<br><br><span style="font-size:12px;color:#7a6234">${duraksLine}</span>`;
+  lastOver = { icon, title, text, result, ranking };
   sfx(result !== "draw" && result === myId() ? "lose" : "win");
   addLog(icon, title);
   render();
@@ -1377,6 +1444,14 @@ let lobby = null;             // Host: {code, started}
 let guestLobby = null;        // Gast: letzter Lobby-Stand
 let overShown = false;
 let prevSnaps = {};
+let offlineSeats = {};        // seat -> true: gerade ohne Verbindung (Spiel wartet)
+let roomDuraks = {};          // Durak-Bilanz über Revanchen im selben Raum
+let tokens = {};              // Host: seat -> Geheim-Token (für Wiederverbindung)
+let myToken = null;           // Gast: eigenes Token
+let myRoomCode = null;
+let reTries = 0, reTimer = null, keepTimer = null;
+let wasMyTurn = false;
+let wakeLock = null;
 let myName = "";
 try{ myName = (localStorage.getItem("opdurak-name") || "").slice(0, 14); }catch(e){}
 
@@ -1400,6 +1475,7 @@ function sendTo(seat, msg){
 }
 function broadcastState(){
   for(const c of conns) sendTo(c.seat, { t:"s", s: snapshotFor(c.seat) });
+  persistHost();
 }
 function broadcastLobby(){
   const players = seatsInLobby().map(s => ({ seat: s, name: names[s] }));
@@ -1413,11 +1489,16 @@ function saveName(v){
   return myName;
 }
 function teardownOnline(){
+  if(role === "host"){ for(const c of conns) sendTo(c.seat, { t:"abort" }); }
   try{ if(conn) conn.close(); }catch(e){}
   for(const c of conns){ try{ c.conn.close(); }catch(e){} }
   try{ if(peer) peer.destroy(); }catch(e){}
+  if(reTimer){ clearTimeout(reTimer); reTimer = null; }
+  if(keepTimer){ clearInterval(keepTimer); keepTimer = null; }
   conn = null; conns = []; peer = null; role = null; mySeat = "p1";
   lobby = null; guestLobby = null; overShown = false; prevSnaps = {};
+  offlineSeats = {}; roomDuraks = {}; tokens = {}; myToken = null; myRoomCode = null; reTries = 0;
+  try{ sessionStorage.removeItem("opdurak-host"); sessionStorage.removeItem("opdurak-guest"); }catch(e){}
 }
 function showOverlayBox(icon, title, html, buttons){
   $("#ovIcon").textContent = icon;
@@ -1463,32 +1544,62 @@ function createRoom(){
     [{ label:"Abbrechen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
   try{ peer = new Peer(ROOM_PREFIX + code, { config: ICE_CONFIG }); }
   catch(e){ onlineFail("Online-Modul konnte nicht starten."); return; }
-  peer.on("open", () => { lobby = { code, started:false }; showLobbyHost(); });
-  peer.on("connection", c => {
-    if(!lobby || lobby.started || conns.length >= 3){ try{ c.close(); }catch(e){} return; }
-    const used = conns.map(x => x.seat);
-    const seat = SEAT_ORDER.find(s => s !== "p1" && !used.includes(s));
-    c.on("open", () => {
-      conns.push({ conn: c, seat });
-      names[seat] = "Spieler " + (SEAT_ORDER.indexOf(seat) + 1);
-      c.on("data", msg => onNetMessage(seat, msg));
-      c.on("close", () => onPeerLeft(seat));
-      c.on("error", () => onPeerLeft(seat));
-      sendTo(seat, { t:"welcome", seat });
-      broadcastLobby();
-    });
-  });
+  peer.on("open", () => { myRoomCode = code; lobby = { code, started:false }; showLobbyHost(); });
+  peer.on("connection", c => wireHostConn(c));
+  peer.on("disconnected", () => { try{ peer.reconnect(); }catch(e){} });
   peer.on("error", err => {
     if(err && err.type === "unavailable-id") createRoom();
-    else onlineFail(peerErrText(err));
+    else if(!lobby) onlineFail(peerErrText(err));
   });
 }
-function onPeerLeft(seat){
-  const i = conns.findIndex(c => c.seat === seat);
+/* Host: jede eingehende Verbindung annehmen; beim ersten "hello" entscheiden:
+   Rückkehrer (gültiges Token) -> Sitz wieder anschließen, sonst Lobby-Beitritt. */
+function wireHostConn(c){
+  c.on("open", () => {
+    c.on("data", msg => {
+      const known = conns.find(x => x.conn === c);
+      if(known){ onNetMessage(known.seat, msg); return; }
+      if(!msg || msg.t !== "hello"){ return; }
+      const rs = msg.resume;
+      if(rs && tokens[rs.seat] === rs.token && seats.includes(rs.seat) && lobby && lobby.started){
+        const old = conns.findIndex(x => x.seat === rs.seat);
+        if(old >= 0){ try{ conns[old].conn.close(); }catch(e){} conns.splice(old, 1); }
+        conns.push({ conn: c, seat: rs.seat });
+        delete offlineSeats[rs.seat];
+        if(msg.name) names[rs.seat] = msg.name.trim().slice(0, 14) || names[rs.seat];
+        sendTo(rs.seat, { t:"welcome", seat: rs.seat, token: rs.token });
+        ruling(`📡 ${Nm(rs.seat)} ist wieder da!`, "good");
+        render();
+        return;
+      }
+      if(lobby && !lobby.started && conns.length < 3){
+        const used = conns.map(x => x.seat);
+        const seat = SEAT_ORDER.find(s => s !== "p1" && !used.includes(s));
+        conns.push({ conn: c, seat });
+        tokens[seat] = makeCode() + makeCode();
+        const n = (msg.name || "").trim().slice(0, 14);
+        names[seat] = n || "Spieler " + (SEAT_ORDER.indexOf(seat) + 1);
+        sendTo(seat, { t:"welcome", seat, token: tokens[seat] });
+        broadcastLobby();
+        return;
+      }
+      try{ c.close(); }catch(e){}
+    });
+    c.on("close", () => onHostConnClosed(c));
+    c.on("error", () => onHostConnClosed(c));
+  });
+}
+function onHostConnClosed(c){
+  const i = conns.findIndex(x => x.conn === c);
   if(i < 0) return;
+  const seat = conns[i].seat;
   conns.splice(i, 1);
-  if(lobby && !lobby.started){ broadcastLobby(); showLobbyHost(); }
-  else onlineDisconnect();
+  if(lobby && !lobby.started){ delete tokens[seat]; broadcastLobby(); showLobbyHost(); return; }
+  if(phase === "over") return;
+  // Spiel läuft: Sitz behalten, auf Rückkehr warten (kein Abbruch!)
+  offlineSeats[seat] = true;
+  ruling(`📴 ${Nm(seat)} hat gerade keine Verbindung — das Spiel wartet. (Er/sie kann einfach zurückkommen, sogar nach Neuladen der Seite.)`, "bad");
+  render();
 }
 function showLobbyHost(){
   if(!lobby) return;
@@ -1558,37 +1669,86 @@ function joinRoom(code){
   code = (code || "").trim().toUpperCase();
   if(code.length < 4){ showOnlineJoin(""); return; }
   teardownOnline();
-  role = "guest";
+  role = "guest"; myRoomCode = code;
   showOverlayBox("🔑", "Trete bei …", `Suche Raum <b>${code}</b> …`,
     [{ label:"Abbrechen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
+  guestConnect(false);
+}
+/* Gast: (wieder) mit dem Raum verbinden. resume=true nach Verbindungsverlust/Reload. */
+function guestConnect(resume){
+  try{ if(peer) peer.destroy(); }catch(e){}
   try{ peer = new Peer({ config: ICE_CONFIG }); }
   catch(e){ onlineFail("Online-Modul konnte nicht starten."); return; }
   peer.on("open", () => {
-    conn = peer.connect(ROOM_PREFIX + code, { reliable: true });
+    conn = peer.connect(ROOM_PREFIX + myRoomCode, { reliable: true });
     conn.on("open", () => {
-      mode = "online"; phase = "idle";
-      send({ t:"hello", name: myName });
-      showOverlayBox("🔗", "Verbunden!", "Warte auf den Start durch den Raum-Ersteller …", []);
+      mode = "online"; if(!resume) phase = "idle";
+      reTries = 0;
+      send({ t:"hello", name: myName, resume: resume && myToken ? { seat: mySeat, token: myToken } : null });
+      startKeepalive();
+      if(!resume) showOverlayBox("🔗", "Verbunden!", "Warte auf den Start durch den Raum-Ersteller …", []);
     });
     conn.on("data", msg => onNetMessage(null, msg));
-    conn.on("close", onlineDisconnect);
-    conn.on("error", onlineDisconnect);
+    conn.on("close", guestConnLost);
+    conn.on("error", guestConnLost);
   });
-  peer.on("error", err => onlineFail(peerErrText(err)));
+  peer.on("error", err => {
+    if(myToken) guestConnLost();               // laufendes Spiel: weiter versuchen
+    else onlineFail(peerErrText(err));
+  });
+}
+function guestConnLost(){
+  if(mode !== "online" || role !== "guest" || phase === "over") return;
+  if(!myToken){ onlineDisconnect(); return; }  // noch kein Spiel: normaler Abbruch
+  scheduleReconnect();
+}
+function scheduleReconnect(){
+  if(reTimer) return;
+  reTries++;
+  if(reTries > 20){
+    try{ sessionStorage.removeItem("opdurak-guest"); }catch(e){}
+    onlineFail("Wiederverbindung nicht möglich. Erstellt einfach einen neuen Raum.");
+    return;
+  }
+  showOverlayBox("📡", "Verbindung verloren", `Versuche wieder zu verbinden … (Versuch ${reTries}/20)`,
+    [{ label:"Aufgeben", cb: () => { teardownOnline(); showStartOverlay(); } }]);
+  reTimer = setTimeout(() => { reTimer = null; guestConnect(true); }, reTries === 1 ? 500 : 3500);
+}
+function startKeepalive(){
+  if(keepTimer) clearInterval(keepTimer);
+  // hält NAT-Zuordnung & Datenkanal auch bei langen Denkpausen wach
+  keepTimer = setInterval(() => { send({ t:"ping" }); }, 4000);
 }
 
 /* ---- Nachrichten ---- */
+const lastEmoteAt = {};
 function onNetMessage(fromSeat, msg){
   if(!msg || typeof msg !== "object") return;
   if(role === "host"){
-    if(msg.t === "hello"){
+    if(msg.t === "ping"){ sendTo(fromSeat, { t:"pong" }); }
+    else if(msg.t === "hello"){
       const n = (msg.name || "").trim().slice(0, 14);
       if(n) names[fromSeat] = n;
-      broadcastLobby();
+      if(lobby && !lobby.started) broadcastLobby();
+    }
+    else if(msg.t === "emote"){
+      const now = (typeof performance !== "undefined" ? performance.now() : 0);
+      if(lastEmoteAt[fromSeat] && now - lastEmoteAt[fromSeat] < 1500) return;
+      lastEmoteAt[fromSeat] = now;
+      const e = String(msg.e || "").slice(0, 4);
+      showEmote(fromSeat, e);
+      for(const c of conns) sendTo(c.seat, { t:"emote", seat: fromSeat, e });
     }
     else if(msg.t === "a") applyRemoteAction(fromSeat, msg);
   } else {
-    if(msg.t === "welcome"){ mySeat = msg.seat; viewer = msg.seat; }
+    if(msg.t === "welcome"){
+      mySeat = msg.seat; viewer = msg.seat;
+      if(msg.token) myToken = msg.token;
+      prevSnaps = {}; overShown = false;   // frischer Zustand nach (Wieder-)Beitritt
+      try{ sessionStorage.setItem("opdurak-guest", JSON.stringify({ code: myRoomCode, seat: mySeat, token: myToken, name: myName })); }catch(e){}
+    }
+    else if(msg.t === "pong"){ /* Keepalive-Antwort */ }
+    else if(msg.t === "emote"){ showEmote(msg.seat, String(msg.e || "").slice(0, 4)); }
     else if(msg.t === "lobby"){
       guestLobby = msg;
       deckSize = msg.deckSize;
@@ -1650,6 +1810,7 @@ function snapshotFor(seat){
     finished: { ...finished },
     table: table.map(p => ({ a: p.atk.id, d: p.def ? p.def.id : null, jd: p.justDef ? 1 : 0 })),
     attacker, maxAttacks, phase,
+    offline: { ...offlineSeats },
     ref: lastSay,
     over: lastOver,
     you: seat,
@@ -1670,6 +1831,7 @@ function applySnapshot(s){
   }
   table = s.table.map(p => ({ atk: CARD_BY_ID[p.a], def: p.d ? CARD_BY_ID[p.d] : null, justDef: !!p.jd }));
   attacker = s.attacker; maxAttacks = s.maxAttacks; phase = s.phase;
+  offlineSeats = s.offline || {};
   if(s.ref && (!prevSnap || !prevSnap.ref || prevSnap.ref.html !== s.ref.html)) say(s.ref.html, s.ref.mood);
   guestSounds(prevSnap, s);
   if(first) $("#overlay").classList.remove("show");
@@ -1692,6 +1854,125 @@ function guestSounds(a, b){
   else if(defs(b.table) > defs(a.table)) sfx("slam");
   else if(a.table.length > 0 && b.table.length === 0) sfx("take");
   if(b.over && !a.over) sfx(b.over.result !== "draw" && b.over.result === mySeat ? "lose" : "win");
+}
+
+/* ---- Sitzungs-Wiederherstellung: übersteht App-Wechsel UND Seiten-Reload ---- */
+function persistHost(){
+  if(mode !== "online" || role !== "host" || !lobby || !lobby.started) return;
+  try{
+    sessionStorage.setItem("opdurak-host", JSON.stringify({
+      code: lobby.code, deckSize, seats, tokens, roomDuraks, finishOrder,
+      names: Object.fromEntries(seats.map(s => [s, names[s]])),
+      state: {
+        deck: deck.map(c => c.id), discard: discard.map(c => c.id),
+        hands: Object.fromEntries(seats.map(s => [s, hands[s].map(c => c.id)])),
+        table: table.map(p => ({ a: p.atk.id, d: p.def ? p.def.id : null })),
+        attacker, maxAttacks, phase, finished, ref: lastSay, over: lastOver,
+      },
+    }));
+  }catch(e){}
+}
+function tryRestoreHostSession(){
+  let saved = null;
+  try{ saved = JSON.parse(sessionStorage.getItem("opdurak-host")); }catch(e){}
+  if(!saved || !saved.code || !saved.state) return false;
+  showOverlayBox("📡", "Raum " + saved.code + " fortsetzen?",
+    "Die Seite wurde neu geladen, aber deine laufende Partie ist gerettet. Deine Mitspieler verbinden sich automatisch wieder.",
+    [
+      { label:"⚓ Partie fortsetzen", cb: () => resumeHostRoom(saved) },
+      { label:"Verwerfen", cb: () => { try{ sessionStorage.removeItem("opdurak-host"); }catch(e){} showStartOverlay(); } },
+    ]);
+  return true;
+}
+function resumeHostRoom(saved){
+  role = "host"; mySeat = "p1"; viewer = "p1"; mode = "online";
+  myRoomCode = saved.code;
+  deckSize = saved.deckSize; seats = saved.seats; tokens = saved.tokens || {};
+  roomDuraks = saved.roomDuraks || {}; finishOrder = saved.finishOrder || [];
+  Object.assign(names, saved.names || {});
+  const st = saved.state;
+  deck = st.deck.map(id => CARD_BY_ID[id]).filter(Boolean);
+  discard = st.discard.map(id => CARD_BY_ID[id]).filter(Boolean);
+  hands = { p1:[], p2:[], p3:[], p4:[] };
+  for(const s of seats) hands[s] = (st.hands[s] || []).map(id => CARD_BY_ID[id]).filter(Boolean);
+  table = st.table.map(p => ({ atk: CARD_BY_ID[p.a], def: p.d ? CARD_BY_ID[p.d] : null }));
+  attacker = st.attacker; maxAttacks = st.maxAttacks; phase = st.phase;
+  finished = st.finished || {}; lastOver = st.over || null;
+  seats.filter(s => s !== "p1").forEach(s => { offlineSeats[s] = true; });
+  gen++;
+  showOverlayBox("📡", "Raum wird wiederhergestellt …", "Verbinde zum Vermittlungsserver …",
+    [{ label:"Abbrechen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
+  try{ peer = new Peer(ROOM_PREFIX + saved.code, { config: ICE_CONFIG }); }
+  catch(e){ onlineFail("Online-Modul konnte nicht starten."); return; }
+  peer.on("open", () => {
+    lobby = { code: saved.code, started:true };
+    $("#overlay").classList.remove("show");
+    if(st.ref) say(st.ref.html, st.ref.mood);
+    ruling("📡 Partie wiederhergestellt — warte auf die Rückkehr der Mitspieler …", "good");
+    if(phase === "resolving") later(() => finishRound("taken"), 800);
+    render();
+    if(lastOver) showEndOverlay(lastOver.icon, lastOver.title, lastOver.text);
+  });
+  peer.on("connection", c => wireHostConn(c));
+  peer.on("disconnected", () => { try{ peer.reconnect(); }catch(e){} });
+  peer.on("error", err => { if(err && err.type !== "unavailable-id") onlineFail(peerErrText(err)); });
+}
+function tryRestoreGuestSession(){
+  let saved = null;
+  try{ saved = JSON.parse(sessionStorage.getItem("opdurak-guest")); }catch(e){}
+  if(!saved || !saved.code || !saved.token) return false;
+  role = "guest"; mode = "online";
+  myRoomCode = saved.code; mySeat = saved.seat; myToken = saved.token; viewer = saved.seat;
+  if(saved.name) myName = saved.name;
+  reTries = 0;
+  scheduleReconnect();
+  return true;
+}
+
+/* ---- Emotes ---- */
+const EMOTES = ["😂","😱","🔥","👏","💀","🏴‍☠️"];
+function showEmote(seat, e){
+  if(!e) return;
+  const anchor = seat === viewer
+    ? $("#hand")
+    : (document.querySelector(`.oppbox[data-seat="${seat}"]`) || $("#oppRow"));
+  if(!anchor || !anchor.getBoundingClientRect) return;
+  const r = anchor.getBoundingClientRect();
+  const b = document.createElement("div");
+  b.className = "emote-bubble";
+  b.textContent = e;
+  b.style.left = (r.left + r.width / 2 - 17) + "px";
+  b.style.top = (r.top + (seat === viewer ? -6 : r.height - 8)) + "px";
+  document.body.appendChild(b);
+  setTimeout(() => b.remove(), 2200);
+}
+function sendEmote(e){
+  if(mode !== "online") return;
+  if(role === "host"){
+    showEmote("p1", e);
+    for(const c of conns) sendTo(c.seat, { t:"emote", seat:"p1", e });
+  } else {
+    showEmote(mySeat, e);
+    send({ t:"emote", e });
+  }
+}
+
+/* ---- Bildschirm wachhalten & Verbindung nach App-Wechsel prüfen ---- */
+async function acquireWakeLock(){
+  try{
+    if(typeof navigator !== "undefined" && navigator.wakeLock && !wakeLock){
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    }
+  }catch(e){}
+}
+function onlineResumeCheck(){
+  if(mode !== "online" || phase === "over") return;
+  if(role === "guest"){
+    if((!conn || !conn.open) && myToken && !reTimer){ reTries = 0; scheduleReconnect(); }
+  } else if(peer && peer.disconnected){
+    try{ peer.reconnect(); }catch(e){}
+  }
 }
 
 /* ================================================================
@@ -1787,6 +2068,7 @@ function showDetail(card){
 }
 
 document.addEventListener("click", e => {
+  if(!e.target.closest("#emotePop") && !e.target.closest("#emoteBtn")) $("#emotePop").classList.remove("show");
   const info = e.target.closest("[data-info]");
   if(info){ e.stopPropagation(); showDetail(CARD_BY_ID[info.dataset.info]); return; }
 
@@ -1889,6 +2171,7 @@ function cancelDrag(g){
 
 handWrap.addEventListener("pointerdown", e => {
   audioCtx(); // Audio bei erster Nutzergeste freischalten
+  acquireWakeLock();
   if(e.target.closest(".c-info")) return;
   const cardEl = e.target.closest("#hand .card");
   gesture = { x:e.clientX, y:e.clientY, mode:null, onRaised: !!(cardEl && cardEl.dataset.id === raisedId) };
@@ -1925,6 +2208,30 @@ window.addEventListener("resize", () => {
   lastRects = m;
 });
 
+$("#emoteBtn").addEventListener("click", () => {
+  const pop = $("#emotePop");
+  if(pop.classList.contains("show")){ pop.classList.remove("show"); return; }
+  pop.innerHTML = EMOTES.map(e => `<button data-emote="${e}">${e}</button>`).join("");
+  pop.classList.add("show");
+  document.querySelectorAll("#emotePop [data-emote]").forEach(b => {
+    b.onclick = () => { pop.classList.remove("show"); sendEmote(b.dataset.emote); };
+  });
+});
+
+document.addEventListener("visibilitychange", () => {
+  if(typeof document.visibilityState === "undefined" || document.visibilityState === "visible"){
+    acquireWakeLock();
+    onlineResumeCheck();
+  }
+});
+window.addEventListener("beforeunload", e => {
+  // Versehentliches Schließen während einer Online-Partie abfangen
+  if(mode === "online" && phase !== "over" && phase !== "idle"){ e.preventDefault(); e.returnValue = ""; }
+});
+if(ONLINE && typeof navigator !== "undefined" && "serviceWorker" in navigator){
+  try{ navigator.serviceWorker.register("./sw.js"); }catch(e){}
+}
+
 function updateSoundBtn(){ $("#btnSound").textContent = soundOn ? "🔊" : "🔇"; }
 $("#btnSound").addEventListener("click", () => {
   soundOn = !soundOn;
@@ -1942,10 +2249,12 @@ $("#btnLog").addEventListener("click", () => {
 });
 $("#btnNew").addEventListener("click", showStartOverlay);
 
-/* Start — per Link mit ?join=CODE geöffnet: direkt beitreten */
+/* Start — laufende Sitzung wiederherstellen oder per ?join=CODE direkt beitreten */
 const joinParam = (ONLINE && typeof location !== "undefined")
   ? new URLSearchParams(location.search).get("join") : null;
-if(joinParam) showOnlineJoin(joinParam);
+if(ONLINE && tryRestoreHostSession()){ /* Overlay fragt: Partie fortsetzen? */ }
+else if(ONLINE && tryRestoreGuestSession()){ /* verbindet automatisch wieder */ }
+else if(joinParam) showOnlineJoin(joinParam);
 else showStartOverlay();
 render();
 </script>
