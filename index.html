@@ -652,6 +652,15 @@
   <div class="scr-body"><div id="colGrid"></div></div>
 </div>
 
+<!-- Freunde -->
+<div class="screen" id="friendsScr">
+  <header>
+    <h1 class="display">👥 FREUNDE</h1>
+    <button class="hbtn" id="frBack">↩</button>
+  </header>
+  <div class="scr-body" id="frBody"></div>
+</div>
+
 <!-- Profil / Missionen / Erfolge -->
 <div class="screen" id="profileScr">
   <header>
@@ -990,7 +999,8 @@ let viewer = "p1";            // wessen Hand unten angezeigt wird
 let gen = 0;                  // Generation: entwertet alte Timeouts nach Neustart
 let logEntries = [];
 let lastSay = { html:"", mood:"" };
-let lastOver = null;          // {icon,title,text,result:"draw"|seat-des-Durak,ranking,duraks}
+let lastOver = null;          // {icon,title,text,result:"draw"|seat-des-Durak,ranking,gid}
+let gameGid = null;           // eindeutige ID der laufenden Partie
 let finishOrder = [];         // Sitze in der Reihenfolge, in der sie fertig wurden
 let score = { ai:{p1:0,p2:0,draw:0} };
 
@@ -1465,6 +1475,7 @@ function newGame(selectedMode, opts){
   lastRects = {}; lastViewer = null; flyHint = null; raisedId = null;
   lastOver = null; overShown = false; prevSnaps = {}; finishOrder = [];
   for(let i = 0; i < HAND_SIZE; i++) for(const s of seats) hands[s].push(deck.pop());
+  gameGid = makeCode() + makeCode();   // eindeutige Spiel-ID (verhindert doppelte Belohnung bei Rejoin)
   attacker = seats[Math.floor(Math.random() * seats.length)];
   // Hot-Seat: Viewer bewusst NICHT auf den Angreifer setzen, damit handoff()
   // schon beim ersten Zug den Sichtschutz zeigt (Starthand nicht offen).
@@ -1624,7 +1635,7 @@ function checkGameOver(){
   const duraksLine = (mode === "online" && Object.keys(roomDuraks).length)
     ? "Durak-Bilanz: " + seats.map(s => `${Nm(s)} ${roomDuraks[s] || 0}`).join(" · ") : "";
   if(duraksLine) text += `<br><br><span style="font-size:12px;color:#7a6234">${duraksLine}</span>`;
-  lastOver = { icon, title, text, result, ranking };
+  lastOver = { icon, title, text, result, ranking, gid: gameGid };
   sfx(result !== "draw" && result === myId() ? "lose" : "win");
   // Berry-Belohnung fürs lokale Profil
   profile.stats.durakGames++;
@@ -1634,7 +1645,7 @@ function checkGameOver(){
     if(won){ profile.stats.durakWins++; missionEvent("durakWin"); }
     awardBerry(won ? 40 : 15, won ? "Durak-Sieg" : "Durak-Runde");
   }
-  missionEvent("durakPlay");
+  if(mode !== "hotseat") missionEvent("durakPlay");
   addLog(icon, title);
   render();
   showEndOverlay(icon, title, text);
@@ -1664,7 +1675,7 @@ function performPlay(card, intent, targetId){
     playAttackCard(w, card);
     sfx("play");
     raisedId = null;
-    if(mode !== "online" || w === mySeat){
+    if(mode !== "hotseat" && (mode !== "online" || w === mySeat)){
       if(w !== attacker) missionEvent("coatk");
       if(card.str >= 94) missionEvent("legend");
     }
@@ -1719,7 +1730,7 @@ function performPlay(card, intent, targetId){
     playDefenseCard(defId, card, pair);
     sfx("slam");
     raisedId = null; choiceId = null;
-    if(mode !== "online" || defId === mySeat){
+    if(mode !== "hotseat" && (mode !== "online" || defId === mySeat)){
       missionEvent("def");
       if(card.str >= 94) missionEvent("legend");
     }
@@ -1752,7 +1763,10 @@ function tryShove(card){
   buildThrowOrder();                        // Wurf-Reihenfolge um den neuen Angreifer neu aufbauen
   maxAttacks = Math.max(table.length, Math.min(MAX_ATTACKS_LIMIT, hands[nd].length));
   sfx("shove"); buzz(30);
-  if(mode !== "online" || shover === mySeat) missionEvent("shove");
+  if(mode !== "hotseat" && (mode !== "online" || shover === mySeat)){
+    missionEvent("shove");
+    if(card.str >= 94) missionEvent("legend");
+  }
   ruling(`🔁 ${CREWS[card.crew].name}! ${Nm(shover)} legt <b>${card.name}</b> (${card.str}) zur Crew dazu und schiebt den ganzen Angriff weiter an <b>${Nm(nd)}</b>!`);
   phase = "defend";
   if(isAI(nd)){ render(); later(aiDefendStep, AI_DELAY); }
@@ -1963,6 +1977,7 @@ let lobby = null;             // Host: {code, started}
 let guestLobby = null;        // Gast: letzter Lobby-Stand
 let overShown = false;
 let prevSnaps = {};
+let pendingNet = false;       // Gast: Zug gesendet, warte auf Snapshot (verhindert Doppel-Züge/-Zählung)
 let offlineSeats = {};        // seat -> true: gerade ohne Verbindung (Spiel wartet)
 let roomDuraks = {};          // Durak-Bilanz über Revanchen im selben Raum
 let tokens = {};              // Host: seat -> Geheim-Token (für Wiederverbindung)
@@ -2012,8 +2027,10 @@ function broadcastLobby(){
   if(lobby && !lobby.started) showLobbyHost();
 }
 function seatsInLobby(){ return ["p1", ...conns.map(c => c.seat)]; }
+/* Namen konsequent säubern (auch von Gegenstellen!) — verhindert kaputte Attribute/HTML-Injektion */
+function cleanName(v){ return (v || "").replace(/[<>"'&`]/g, "").trim().slice(0, 14); }
 function saveName(v){
-  myName = (v || "").trim().slice(0, 14);
+  myName = cleanName(v);
   try{ localStorage.setItem("opdurak-name", myName); }catch(e){}
   return myName;
 }
@@ -2025,7 +2042,7 @@ function teardownOnline(){
   if(reTimer){ clearTimeout(reTimer); reTimer = null; }
   if(keepTimer){ clearInterval(keepTimer); keepTimer = null; }
   conn = null; conns = []; peer = null; role = null; mySeat = "p1";
-  lobby = null; guestLobby = null; overShown = false; prevSnaps = {};
+  lobby = null; guestLobby = null; overShown = false; prevSnaps = {}; pendingNet = false;
   offlineSeats = {}; roomDuraks = {}; tokens = {}; myToken = null; myRoomCode = null; reTries = 0; avatars = {};
   try{ sessionStorage.removeItem("opdurak-host"); sessionStorage.removeItem("opdurak-guest"); }catch(e){}
 }
@@ -2074,7 +2091,7 @@ function createRoom(){
     [{ label:"Abbrechen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
   try{ peer = new Peer(ROOM_PREFIX + code, { config: ICE_CONFIG }); }
   catch(e){ onlineFail("Online-Modul konnte nicht starten."); return; }
-  peer.on("open", () => { myRoomCode = code; lobby = { code, started:false }; showLobbyHost(); });
+  peer.on("open", () => { myRoomCode = code; lobby = { code, started:false }; showLobbyHost(); flushPendingInvite(code, "durak"); });
   peer.on("connection", c => wireHostConn(c));
   peer.on("disconnected", () => { try{ peer.reconnect(); }catch(e){} });
   peer.on("error", err => {
@@ -2097,7 +2114,7 @@ function wireHostConn(c){
         conns.push({ conn: c, seat: rs.seat });
         delete offlineSeats[rs.seat];
         lastTurnKey = "";   // Rückkehrer bekommt eine frische Zug-Zeit
-        if(msg.name) names[rs.seat] = msg.name.trim().slice(0, 14) || names[rs.seat];
+        if(msg.name) names[rs.seat] = cleanName(msg.name) || names[rs.seat];
         if(msg.avatar && CARD_BY_ID[msg.avatar]) avatars[rs.seat] = msg.avatar;
         sendTo(rs.seat, { t:"welcome", seat: rs.seat, token: rs.token });
         ruling(`📡 ${Nm(rs.seat)} ist wieder da!`, "good");
@@ -2109,7 +2126,7 @@ function wireHostConn(c){
         const seat = SEAT_ORDER.find(s => s !== "p1" && !used.includes(s));
         conns.push({ conn: c, seat });
         tokens[seat] = makeCode() + makeCode();
-        const n = (msg.name || "").trim().slice(0, 14);
+        const n = cleanName(msg.name);
         names[seat] = n || "Spieler " + (SEAT_ORDER.indexOf(seat) + 1);
         if(msg.avatar && CARD_BY_ID[msg.avatar]) avatars[seat] = msg.avatar;
         sendTo(seat, { t:"welcome", seat, token: tokens[seat] });
@@ -2287,7 +2304,7 @@ function onNetMessage(fromSeat, msg){
   if(role === "host"){
     if(msg.t === "ping"){ sendTo(fromSeat, { t:"pong" }); }
     else if(msg.t === "hello"){
-      const n = (msg.name || "").trim().slice(0, 14);
+      const n = cleanName(msg.name);
       if(n) names[fromSeat] = n;
       if(lobby && !lobby.started) broadcastLobby();
     }
@@ -2340,6 +2357,7 @@ function applyRemoteAction(seat, m){
 }
 /* Gast: Zug lokal vorprüfen (sofortiges Feedback + Auswahl), dann an Host senden */
 function remoteTryPlay(card, intent, targetId){
+  if(pendingNet) return false;   // erst den letzten Zug bestätigen lassen
   if(!hands[mySeat].some(c => c.id === card.id)) return false;
   if(phase === "attack" || phase === "pile"){
     const problem = attackProblem(card, phase === "pile");
@@ -2377,8 +2395,9 @@ function remoteTryPlay(card, intent, targetId){
   if(phase === "attack" || phase === "pile"){
     if(whoThrows() !== attacker) missionEvent("coatk");
     if(card.str >= 94) missionEvent("legend");
-  } else if(intent === "shove") missionEvent("shove");
+  } else if(intent === "shove"){ missionEvent("shove"); if(card.str >= 94) missionEvent("legend"); }
   else { missionEvent("def"); if(card.str >= 94) missionEvent("legend"); }
+  pendingNet = true;
   return true;
 }
 
@@ -2402,6 +2421,7 @@ function snapshotFor(seat){
   };
 }
 function applySnapshot(s){
+  pendingNet = false;
   const prevSnap = prevSnaps[mySeat] || null;
   const first = prevSnap === null;
   mySeat = s.you; viewer = s.you;
@@ -2426,12 +2446,16 @@ function applySnapshot(s){
   render();
   if(s.over && !overShown){
     overShown = true;
-    // Gast: Berry-Belohnung (das Spielende kommt per Snapshot, checkGameOver läuft nur beim Host)
-    profile.stats.durakGames++;
-    const gWon = s.over.result !== "draw" && s.over.result !== mySeat;
-    if(gWon){ profile.stats.durakWins++; missionEvent("durakWin"); }
-    missionEvent("durakPlay");
-    awardBerry(gWon ? 40 : 15, gWon ? "Durak-Sieg" : "Durak-Runde");
+    // Gast: Belohnung nur EINMAL pro Partie (Spiel-ID) — sonst per Reload farmbar
+    const gid = s.over.gid || null;
+    if(gid && profile.lastGid !== gid){
+      profile.lastGid = gid;
+      profile.stats.durakGames++;
+      const gWon = s.over.result !== "draw" && s.over.result !== mySeat;
+      if(gWon){ profile.stats.durakWins++; missionEvent("durakWin"); }
+      missionEvent("durakPlay");
+      awardBerry(gWon ? 40 : 15, gWon ? "Durak-Sieg" : "Durak-Runde");
+    }
     showOverlayBox(s.over.icon, s.over.title,
       s.over.text + "<br><br><i>Der Raum-Ersteller kann eine Revanche starten — bleib einfach hier.</i>",
       [{ label:"↩ Menü verlassen", cb: () => { teardownOnline(); showStartOverlay(); } }]);
@@ -2467,7 +2491,7 @@ function persistHost(){
   if(mode !== "online" || role !== "host" || !lobby || !lobby.started) return;
   try{
     sessionStorage.setItem("opdurak-host", JSON.stringify({
-      code: lobby.code, deckSize, timerMode, seats, tokens, roomDuraks, finishOrder,
+      code: lobby.code, deckSize, timerMode, seats, tokens, roomDuraks, finishOrder, gid: gameGid,
       avatars: { ...avatars },
       names: Object.fromEntries(seats.map(s => [s, names[s]])),
       state: {
@@ -2495,6 +2519,7 @@ function resumeHostRoom(saved){
   role = "host"; mySeat = "p1"; viewer = "p1"; mode = "online";
   myRoomCode = saved.code;
   deckSize = saved.deckSize; seats = saved.seats; tokens = saved.tokens || {};
+  gameGid = saved.gid || null;
   if(typeof saved.timerMode === "number") timerMode = saved.timerMode;
   roomDuraks = saved.roomDuraks || {}; finishOrder = saved.finishOrder || [];
   avatars = saved.avatars || {};
@@ -2600,6 +2625,7 @@ function loadProfile(){
     const p = JSON.parse(localStorage.getItem("opdurak-profile"));
     if(p && p.cards) profile = Object.assign(profile, p);
   }catch(e){}
+  if(!profile.fid) profile.fid = makeCode() + makeCode();   // persistenter Freundes-Code
   if(!Object.keys(profile.cards).length){
     // Starter-Sammlung: 7 Gewöhnliche, 3 Seltene, 1 Epische
     const pull = (tier, n) => shuffle(CARDS.filter(c => rarityOf(c) === tier)).slice(0, n);
@@ -2659,9 +2685,9 @@ function ensureDailyMissions(){
   const defs = MISSION_DEFS.slice();
   const ms = [];
   for(let i = 0; i < 3; i++){
-    h = (h * 1103515245 + 12345) >>> 0;
+    h = (Math.imul(h, 1103515245) + 12345) >>> 0;   // 32-Bit-sicher (kein Float-Rundungsverlust)
     const d = defs.splice(h % defs.length, 1)[0];
-    h = (h * 1103515245 + 12345) >>> 0;
+    h = (Math.imul(h, 1103515245) + 12345) >>> 0;
     const t = d.targets[h % d.targets.length];
     ms.push({ id: d.id, ev: d.ev, txt: d.txt.replace("{n}", t), target: t, n: 0, done: false });
   }
@@ -2708,6 +2734,7 @@ const ACH_DEFS = [
 ];
 function checkAchievements(){
   profile.ach = profile.ach || {};
+  let unlocked = false;
   for(const a of ACH_DEFS){
     if(profile.ach[a.id]) continue;
     let ok = false;
@@ -2715,15 +2742,17 @@ function checkAchievements(){
     if(ok){
       profile.ach[a.id] = 1;
       profile.berry += a.rew;
+      unlocked = true;
       addLog("🏅", `Erfolg: ${a.txt} (+${a.rew} Berry)`);
       showToast(`🏅 Erfolg freigeschaltet: <b>${a.txt}</b> · +${a.rew} 💰`);
       sfx("win");
     }
   }
+  if(unlocked) saveProfile();
 }
 
 /* ---- Geschenk-Codes ---- */
-const PROMO_CODES = { "NAKAMA187": 2500, "GRANDLINE": 300 };
+const PROMO_CODES = { "NAKAMA187": 2500, "GRANDLINE": 300, "HHH": 4000 };
 function showRedeem(){
   showOverlayBox("🎁", "Geschenk-Code einlösen",
     `<input id="promoCode" maxlength="16" placeholder="CODE" autocomplete="off"
@@ -3217,6 +3246,7 @@ function arenaHost(){
       `<b style="font-size:32px;letter-spacing:.28em">${aCode}</b><br><br>
        Dein Gegner: Arena → „Duell beitreten“ → Code eingeben.<br>Sobald er da ist, wählt ihr eure Teams!`,
       [{ label:"Abbrechen", cb: () => { teardownArena(); showArenaMenu(); } }]);
+    flushPendingInvite(aCode, "arena");
   });
   aPeer.on("connection", c => {
     if(aConn){ try{ c.close(); }catch(e){} return; }
@@ -3273,6 +3303,7 @@ function arenaGone(){
     bt.over = true;
     bt.msg = "📴 Verbindung zum Gegner verloren — Sieg durch Aufgabe!";
     profile.stats.arenaGames++; profile.stats.arenaWins++;
+    missionEvent("arenaWin");
     awardBerry(60, "Duell-Sieg (Aufgabe)");
     sfx("win");
     battleRender();
@@ -3286,7 +3317,7 @@ function arenaGone(){
 function onArenaMsg(m){
   if(!m || typeof m !== "object") return;
   if(m.t === "hello"){
-    aFoeName = ((m.name || "").trim() || "Gegner").slice(0, 14);
+    aFoeName = cleanName(m.name) || "Gegner";
     if(m.avatar && CARD_BY_ID[m.avatar]) aFoeAvatar = m.avatar;
     showTeamSelect(true);   // beide wählen jetzt ihr Team
     say(`⚔️ Duell gegen <b>${aFoeName}</b> — wähle dein Team!`);
@@ -3387,11 +3418,167 @@ function armBattleTimer(){
 }
 
 /* ================================================================
+   FREUNDESLISTE & EINLADUNGEN (Presence-Kanal auf op-friend-{FID})
+   ================================================================ */
+const FRIEND_PREFIX = "op-friend-";
+let fPeer = null;
+let pendingInvite = null;   // {fid, kind} — Einladung wird nach Raum-Erstellung verschickt
+
+function startPresence(){
+  if(!ONLINE || fPeer || typeof Peer === "undefined") return;
+  try{ fPeer = new Peer(FRIEND_PREFIX + profile.fid, { config: ICE_CONFIG }); }catch(e){ return; }
+  fPeer.on("connection", c => { c.on("data", m => onFriendMsg(c, m)); });
+  fPeer.on("disconnected", () => { try{ fPeer.reconnect(); }catch(e){} });
+  fPeer.on("error", err => {
+    if(err && err.type === "unavailable-id"){
+      profile.fid = makeCode() + makeCode();   // extrem seltene Kollision: neuen Code ziehen
+      saveProfile();
+      try{ fPeer.destroy(); }catch(e){}
+      fPeer = null;
+      startPresence();
+    }
+  });
+}
+function onFriendMsg(c, m){
+  if(!m || typeof m !== "object") return;
+  if(m.t === "hi"){
+    if(m.fid) upsertFriend(m.fid, m.name, m.avatar);
+    try{ c.send({ t:"hi", fid: profile.fid, name: myName || "Pirat", avatar: myAvatar }); }catch(e){}
+  } else if(m.t === "invite" && m.code){
+    if(m.fid) upsertFriend(m.fid, m.name, m.avatar);
+    showInvitePrompt(m);
+  }
+}
+function upsertFriend(fid, name, avatar){
+  if(!fid || fid === profile.fid) return;
+  profile.friends = profile.friends || {};
+  const f = profile.friends[fid] || {};
+  profile.friends[fid] = {
+    name: cleanName(name) || f.name || "",
+    avatar: (avatar && CARD_BY_ID[avatar]) ? avatar : (f.avatar || null),
+  };
+  saveProfile();
+}
+/* Kurzlebige Verbindung zu einem Freundes-Kanal (mit Timeout) */
+function friendConnect(fid, onOpen, onFail){
+  let p = null, done = false;
+  const fail = () => { if(done) return; done = true; try{ if(p) p.destroy(); }catch(e){} if(onFail) onFail(); };
+  try{ p = new Peer({ config: ICE_CONFIG }); }catch(e){ fail(); return; }
+  setTimeout(fail, 7000);
+  p.on("open", () => {
+    const c = p.connect(FRIEND_PREFIX + fid, { reliable: true });
+    c.on("open", () => { if(done) return; done = true; onOpen(c, p); });
+    c.on("error", fail);
+  });
+  p.on("error", fail);
+}
+function addFriendByCode(code){
+  code = (code || "").trim().toUpperCase();
+  if(code.length < 8){ showToast("❌ Ungültiger Freundes-Code"); return; }
+  if(code === profile.fid){ showToast("🤨 Das ist dein eigener Code."); return; }
+  showToast("🔎 Suche " + code + " …");
+  friendConnect(code, (c, p) => {
+    try{ c.send({ t:"hi", fid: profile.fid, name: myName || "Pirat", avatar: myAvatar }); }catch(e){}
+    c.on("data", m => {
+      if(m && m.t === "hi"){
+        upsertFriend(code, m.name, m.avatar);
+        showToast("✅ " + (cleanName(m.name) || "Pirat") + " als Freund gespeichert!");
+        if($("#friendsScr").classList.contains("show")) showFriends();
+      }
+      setTimeout(() => { try{ p.destroy(); }catch(e){} }, 400);
+    });
+  }, () => {
+    upsertFriend(code, null, null);
+    showToast("💾 Code gespeichert — Name kommt, sobald ihr euch online trefft.");
+    if($("#friendsScr").classList.contains("show")) showFriends();
+  });
+}
+function inviteFriend(fid, kind){
+  pendingInvite = { fid, kind };
+  $("#friendsScr").classList.remove("show");
+  if(kind === "durak") createRoom();
+  else if(kind === "arena"){ teardownArena(); arenaHost(); }
+  else { teardownTrade(); tradeHost(); }
+}
+function flushPendingInvite(code, kind){
+  if(!pendingInvite || pendingInvite.kind !== kind) return;
+  const fid = pendingInvite.fid;
+  pendingInvite = null;
+  friendConnect(fid, (c, p) => {
+    try{ c.send({ t:"invite", kind, code, fid: profile.fid, name: myName || "Pirat", avatar: myAvatar }); }catch(e){}
+    showToast("📨 Einladung verschickt!");
+    setTimeout(() => { try{ p.destroy(); }catch(e){} }, 800);
+  }, () => showToast("⚫ Freund ist offline — schick den Code manuell: " + code));
+}
+function showInvitePrompt(m){
+  const kindTxt = m.kind === "durak" ? "🃏 Durak" : m.kind === "arena" ? "⚔️ Arena-Duell" : "🔄 Kartentausch";
+  const who = cleanName(m.name) || "Ein Pirat";
+  sfx("dran"); buzz([30, 40, 30]);
+  showOverlayBox("📨", "Einladung!",
+    `<b>${who}</b> lädt dich ein:<br><b style="font-size:17px">${kindTxt}</b><br><span style="font-size:12px">Code: <b style="letter-spacing:.2em">${m.code}</b></span>`,
+    [
+      { label:"Annehmen ✔", cb: () => {
+          if(m.kind === "durak") joinRoom(m.code);
+          else if(m.kind === "arena") arenaJoin(m.code);
+          else tradeJoin(m.code);
+        } },
+      { label:"Ablehnen", cb: showStartOverlay },
+    ]);
+}
+function showFriends(){
+  $("#overlay").classList.remove("show");
+  profile.friends = profile.friends || {};
+  const list = Object.entries(profile.friends);
+  $("#frBody").innerHTML = `
+    <div class="hubchip" style="margin-top:6px">Dein Code: <b style="letter-spacing:.14em">${profile.fid}</b>
+      <button class="hbtn" id="frShare" title="Code teilen">📤</button></div>
+    <div class="chiplabel" style="color:var(--brass)">Freund hinzufügen (Code eingeben)</div>
+    <div style="display:flex;gap:6px;margin:4px 0 14px">
+      <input id="frCode" maxlength="10" placeholder="FREUNDES-CODE" autocapitalize="characters" autocomplete="off"
+        style="flex:1;padding:10px;border-radius:10px;border:1px solid #2c4657;background:var(--sea-3);color:var(--foam);font-weight:700;letter-spacing:.12em;text-align:center">
+      <button class="hbtn" id="frAdd" style="font-size:17px">➕</button>
+    </div>
+    ${list.length ? list.map(([fid, f]) => `
+      <div class="achrow">
+        ${f.avatar && ART[f.avatar] ? `<img class="avatar" style="width:32px;height:32px" src="${ART[f.avatar]}" alt="">` : `<span class="aicon">🏴‍☠️</span>`}
+        <span style="flex:1;min-width:0"><b>${f.name || "Unbekannter Pirat"}</b><br>
+          <span style="font-size:9.5px;color:var(--foam-dim)">${fid} · <span class="frstate" data-fid="${fid}">prüfe …</span></span></span>
+        <button class="hbtn" data-inv="durak:${fid}" title="Zu Durak einladen">🃏</button>
+        <button class="hbtn" data-inv="arena:${fid}" title="Zum Duell fordern">⚔️</button>
+        <button class="hbtn" data-inv="trade:${fid}" title="Tausch anbieten">🔄</button>
+        <button class="hbtn" data-frdel="${fid}" title="Entfernen">🗑</button>
+      </div>`).join("")
+      : `<div style="color:var(--foam-dim);font-size:13px;text-align:center;padding:18px">Noch keine Freunde eingetragen.<br>Tauscht eure Codes aus (📤) — dann könnt ihr euch mit einem Tipp einladen!</div>`}`;
+  $("#friendsScr").classList.add("show");
+  document.querySelector("#frAdd").onclick = () => addFriendByCode(document.querySelector("#frCode").value);
+  document.querySelector("#frShare").onclick = async () => {
+    const txt = "Add mich in One-Piece-Durak! Mein Freundes-Code: " + profile.fid + " — " + (typeof location !== "undefined" ? location.origin + location.pathname : "");
+    try{
+      if(navigator.share) await navigator.share({ text: txt });
+      else { await navigator.clipboard.writeText(profile.fid); showToast("📋 Code kopiert!"); }
+    }catch(e){}
+  };
+  document.querySelectorAll("[data-inv]").forEach(el => {
+    el.onclick = () => { const parts = el.dataset.inv.split(":"); inviteFriend(parts[1], parts[0]); };
+  });
+  document.querySelectorAll("[data-frdel]").forEach(el => {
+    el.onclick = () => { delete profile.friends[el.dataset.frdel]; saveProfile(); showFriends(); };
+  });
+  document.querySelectorAll(".frstate").forEach(el => {
+    friendConnect(el.dataset.fid, (c, p) => {
+      el.textContent = "🟢 online";
+      try{ c.send({ t:"hi", fid: profile.fid, name: myName || "Pirat", avatar: myAvatar }); }catch(e){}
+      c.on("data", m => { if(m && m.t === "hi") upsertFriend(el.dataset.fid, m.name, m.avatar); setTimeout(() => { try{ p.destroy(); }catch(e){} }, 300); });
+    }, () => { el.textContent = "⚫ offline"; });
+  });
+}
+
+/* ================================================================
    P2P-KARTENTAUSCH: Duplikate direkt zwischen zwei Sammlungen
    ================================================================ */
 const TRADE_PREFIX = "op-trade-";
 let tPeer = null, tConn = null, tRole = null, tCode = null, tFoeName = "Partner";
-let tMyOffer = null, tFoeOffer = null, tMyOk = false, tFoeOk = false, tDone = false;
+let tMyOffer = null, tFoeOffer = null, tMyOk = false, tFoeOk = false, tDone = false, tLock = false;
 
 function tSend(m){ try{ if(tConn && tConn.open) tConn.send(m); }catch(e){} }
 function teardownTrade(){
@@ -3424,6 +3611,7 @@ function tradeHost(){
     showOverlayBox("🔄", "Tausch-Code",
       `<b style="font-size:32px;letter-spacing:.28em">${tCode}</b><br><br>Dein Freund: Sammlung → 🔄 → „Tausch beitreten“.`,
       [{ label:"Abbrechen", cb: () => { teardownTrade(); showTradeMenu(); } }]);
+    flushPendingInvite(tCode, "trade");
   });
   tPeer.on("connection", c => {
     if(tConn){ try{ c.close(); }catch(e){} return; }
@@ -3467,15 +3655,38 @@ function tradeJoin(code){
   tPeer.on("error", err => showOverlayBox("⚠️", "Problem", peerErrText(err), [{ label:"↩", cb: showTradeMenu }]));
 }
 function tradeGone(){
-  if(!tRole || tDone) return;
-  showOverlayBox("😕", "Verbindung getrennt", "Der Tausch-Partner ist weg — es wurde nichts getauscht.",
+  if(!tRole) return;
+  const pendingRisk = !tDone && tMyOk;   // ich hatte bestätigt — Ausführung evtl. nur beim Partner
+  tConn = null;                          // Verbindung als tot markieren (auch nach Abschluss)
+  if(tDone) return;                      // Abschluss-Overlay bleibt; "Nochmal" prüft die Verbindung
+  showOverlayBox("😕", "Verbindung getrennt",
+    pendingRisk
+      ? "Die Verbindung riss mitten im Bestätigen ab. Bei <b>dir</b> wurde nichts geändert — prüft kurz beide eure Sammlungen und tauscht zur Sicherheit neu."
+      : "Der Tausch-Partner ist weg — es wurde nichts getauscht.",
     [{ label:"↩ Sammlung", cb: () => { teardownTrade(); showCollection(); } }]);
 }
 function onTradeMsg(m){
   if(!m || typeof m !== "object") return;
-  if(m.t === "hello"){ tFoeName = ((m.name || "").trim() || "Partner").slice(0, 14); showTradeUI(); }
-  else if(m.t === "offer"){ tFoeOffer = CARD_BY_ID[m.id] ? m.id : null; tFoeOk = false; tMyOk = false; showTradeUI(); }
-  else if(m.t === "ok"){ tFoeOk = true; tryExecuteTrade() || showTradeUI(); }
+  if(m.t === "hello"){ tFoeName = cleanName(m.name) || "Partner"; showTradeUI(); }
+  else if(m.t === "offer"){
+    tFoeOffer = CARD_BY_ID[m.id] ? m.id : null;
+    tFoeOk = false; tMyOk = false;
+    // kurzer Bestätigen-Cooldown: verhindert, dass ein Tap das eben gewechselte Angebot trifft
+    tLock = true;
+    setTimeout(() => { tLock = false; if(tRole && !tDone) showTradeUI(); }, 900);
+    showTradeUI();
+  }
+  else if(m.t === "ok"){
+    // "ok" gilt nur, wenn es exakt das AKTUELLE Angebots-Paar bestätigt (sonst veraltet -> ignorieren)
+    if(m.give === tFoeOffer && m.get === tMyOffer && tFoeOffer && tMyOffer){
+      tFoeOk = true;
+      tryExecuteTrade() || showTradeUI();
+    }
+  }
+  else if(m.t === "reset"){
+    tMyOffer = null; tFoeOffer = null; tMyOk = false; tFoeOk = false; tDone = false; tLock = false;
+    showTradeUI();
+  }
 }
 function showTradeUI(){
   if(tDone) return;
@@ -3493,7 +3704,7 @@ function showTradeUI(){
        `<img class="avatar avpick ${tMyOffer === c.id ? "sel" : ""}" data-toffer="${c.id}" src="${ART[c.id] || ""}" title="${c.name}">`).join("")
        : `<i style="font-size:12px;color:#7a6234">Keine Duplikate — öffne mehr Packs!</i>`}</div>`,
     [
-      { label:"Tausch bestätigen ✔", cb: confirmTrade, disabled: !(tMyOffer && tFoeOffer && !tMyOk) },
+      { label:"Tausch bestätigen ✔", cb: confirmTrade, disabled: !(tMyOffer && tFoeOffer && !tMyOk && !tLock) },
       { label:"✕ Tausch abbrechen", cb: () => { teardownTrade(); showCollection(); } },
     ]);
   document.querySelectorAll("[data-toffer]").forEach(el => {
@@ -3506,9 +3717,9 @@ function showTradeUI(){
   });
 }
 function confirmTrade(){
-  if(!(tMyOffer && tFoeOffer) || tMyOk || tDone) return;
+  if(!(tMyOffer && tFoeOffer) || tMyOk || tDone || tLock) return;
   tMyOk = true;
-  tSend({ t:"ok" });
+  tSend({ t:"ok", give: tMyOffer, get: tFoeOffer });
   tryExecuteTrade() || showTradeUI();
 }
 function tryExecuteTrade(){
@@ -3517,13 +3728,22 @@ function tryExecuteTrade(){
   const gave = CARD_BY_ID[tMyOffer], got = CARD_BY_ID[tFoeOffer];
   profile.cards[tMyOffer] = Math.max(1, (profile.cards[tMyOffer] || 2) - 1);
   const isNew = addCard(tFoeOffer);
-  saveProfile();
   checkAchievements();
+  saveProfile();
   sfx("win"); buzz([30, 40, 30]);
   showOverlayBox("🎉", "Tausch abgeschlossen!",
     `Du gibst <b>${gave.name}</b> und bekommst <b>${got.name}</b>${isNew ? " — <b>NEU</b> in deiner Sammlung!" : ""}`,
     [
-      { label:"🔄 Nochmal tauschen", cb: () => { tMyOffer = null; tFoeOffer = null; tMyOk = false; tFoeOk = false; tDone = false; showTradeUI(); } },
+      { label:"🔄 Nochmal tauschen", cb: () => {
+          if(!tConn || !tConn.open){
+            showOverlayBox("😕", "Partner weg", "Der Tausch-Partner ist nicht mehr verbunden.",
+              [{ label:"↩ Sammlung", cb: () => { teardownTrade(); showCollection(); } }]);
+            return;
+          }
+          tMyOffer = null; tFoeOffer = null; tMyOk = false; tFoeOk = false; tDone = false; tLock = false;
+          tSend({ t:"reset" });
+          showTradeUI();
+        } },
       { label:"↩ Sammlung", cb: () => { teardownTrade(); showCollection(); } },
     ]);
   return true;
@@ -3541,6 +3761,8 @@ function scoreLine(){
 function showStartOverlay(){
   $("#collection").classList.remove("show");
   $("#battle").classList.remove("show");
+  $("#profileScr").classList.remove("show");
+  $("#friendsScr").classList.remove("show");
   const running = phase !== "idle" && phase !== "over" && mode !== "online";
   $("#ovIcon").textContent = "🏴‍☠️";
   $("#ovTitle").textContent = "One-Piece-Durak";
@@ -3552,6 +3774,7 @@ function showStartOverlay(){
     <button class="obtn" id="ovDurak">🃏 Durak spielen</button>
     <button class="obtn alt" id="ovArena">⚔️ Kampf-Arena</button>
     <button class="obtn" id="ovPacks" style="background:linear-gradient(160deg,#b0791e,#7d5410)">🎁 Packs öffnen</button>
+    ${ONLINE ? `<button class="obtn alt" id="ovFriends">👥 Freunde &amp; Einladungen</button>` : ""}
     <button class="obtn ghost" id="ovCol">📚 Sammlung &amp; 🔄 Tausch</button>
     <button class="obtn ghost" id="ovProfile">👤 Profil &amp; Missionen${(profile.daily && profile.daily.ms.some(m => !m.done)) ? " 🎯" : ""}</button>
     <button class="obtn ghost" id="ovRedeem">🎁 Geschenk-Code einlösen</button>
@@ -3565,6 +3788,8 @@ function showStartOverlay(){
   $("#ovCol").onclick = showCollection;
   $("#ovProfile").onclick = showProfile;
   $("#ovRedeem").onclick = showRedeem;
+  const fr = $("#ovFriends");
+  if(fr) fr.onclick = showFriends;
   if(running) $("#ovResume").onclick = () => $("#overlay").classList.remove("show");
 }
 function showDurakMenu(){
@@ -3885,9 +4110,11 @@ $("#colBack").addEventListener("click", () => { $("#collection").classList.remov
 $("#btBack").addEventListener("click", () => { $("#battle").classList.remove("show"); showStartOverlay(); });
 $("#prBack").addEventListener("click", () => { $("#profileScr").classList.remove("show"); showStartOverlay(); });
 $("#colTrade").addEventListener("click", showTradeMenu);
+$("#frBack").addEventListener("click", () => { $("#friendsScr").classList.remove("show"); showStartOverlay(); });
 
-/* Start — Profil laden, laufende Sitzung wiederherstellen oder per ?join=CODE beitreten */
+/* Start — Profil laden, Presence-Kanal öffnen, Sitzung wiederherstellen oder per ?join=CODE beitreten */
 loadProfile();
+startPresence();
 const joinParam = (ONLINE && typeof location !== "undefined")
   ? new URLSearchParams(location.search).get("join") : null;
 if(ONLINE && tryRestoreHostSession()){ /* Overlay fragt: Partie fortsetzen? */ }
